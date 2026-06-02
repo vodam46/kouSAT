@@ -24,6 +24,8 @@ run: $(OUT)
 
 
 
+debug-build: CFLAGS := $(filter-out -O3,$(VAR))
+
 debug-build: CFLAGS+=-g
 
 debug-build: CFLAGS+=-pg -ggdb

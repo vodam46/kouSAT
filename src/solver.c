@@ -1,6 +1,6 @@
 // TODO: memset? how does it work
-// TODO: with learning new clauses, it must be the last two assigned literals that are watched
-// TODO: levels
+// TODO: all solutions, not just the first one it finds -> add negative of choices as new clause
+// TODO: check that everything is correct
 
 #include <assert.h>
 
@@ -58,6 +58,16 @@ void print_level(struct solver* solver) {
 			printf("(%d=%d) ", i, solver->level[i]);
 		}
 	}
+	printf("\n");
+}
+
+void print_reason(struct solver* solver) {
+	for (int i = 1; i < solver->len_variables+1; i++) {
+		if (solver->variables[i] != vundef) {
+			printf("%d -> %d\n", solver->reason[i], i);
+		}
+	}
+	printf("\n");
 }
 
 void print_solver(struct solver* solver) {
@@ -65,13 +75,13 @@ void print_solver(struct solver* solver) {
 	printf("solutions %d\n", solver->solutions);
 	printf("conflicts %d\n", solver->conflicts);
 
-	// printf("problem\n");
-	// print_clauses(solver->problem);
-	// printf("units ");
-	// print_clause(solver->units);
+	printf("problem\n");
+	print_clauses(solver->problem);
+	printf("units ");
+	print_clause(solver->units);
 
-	// printf("watched\n");
-	// print_watched(solver);
+	printf("watched\n");
+	print_watched(solver);
 
 	printf("variables\n");
 	print_variables(solver);
@@ -84,6 +94,9 @@ void print_solver(struct solver* solver) {
 
 	printf("level\n");
 	print_level(solver);
+
+	printf("reason\n");
+	print_reason(solver);
 
 	printf("tocheck\n");
 	print_clause(solver->tocheck);
@@ -104,6 +117,8 @@ void unsat(struct solver* solver) {
 }
 void sat(struct solver* solver) {
 	print_solver(solver);
+
+	new_solution(solver);
 
 	printf("\ns SAT\n");
 	exit(0);
@@ -127,17 +142,12 @@ void remove_clause_unord(struct clause* clause, unsigned index) {
 	clause->values = realloc(clause->values, clause->length * sizeof(value));
 }
 
-// void remove_clause_ord(struct clause* clause, unsigned index) {
-
-// }
-
 void extend_clauses(struct clauses* clauses, struct clause clause) {
 	clauses->length++;
 	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
 	clauses->clauses[clauses->length-1] = clause;
 }
 
-// TODO: reason
 void assign(struct solver* solver, value value, int reason) {
 	int index = abs(value);
 	enum vbool val = get_vbool(value);
@@ -216,6 +226,8 @@ int unit_propagate(struct solver* solver) {
 		for (int var_i = 0; var_i < clauses_i.length; var_i++) {
 			int clause_i = clauses_i.values[var_i];
 			struct clause clause = solver->problem.clauses[clause_i];
+			printf("%d -> ", check);
+			print_clause(clause);
 			if (clause.values[0] == -check) {
 				clause.values[0] = clause.values[1];
 				clause.values[1] = -check;
@@ -228,7 +240,7 @@ int unit_propagate(struct solver* solver) {
 			// look for a new watched literal
 			for (int i = 2; i < clause.length; i++) {
 				value v = clause.values[i];
-				if (solver->variables[abs(v)] != vfalse) {
+				if (solver->variables[abs(v)] != get_vbool(-v)) {
 					extend_clause(&to_remove, var_i);
 					clause.values[1] = v;
 					clause.values[i] = -check;
@@ -238,7 +250,7 @@ int unit_propagate(struct solver* solver) {
 			}
 
 			// couldnt find any, is unit
-			if (solver->variables[abs(first)] != vundef) {
+			if (solver->variables[abs(clause.values[0])] != vundef) {
 				free(solver->tocheck.values);
 				solver->tocheck = (struct clause){NULL, 0};
 				for (int i = to_remove.length-1; i >= 0; i--) {
@@ -249,7 +261,7 @@ int unit_propagate(struct solver* solver) {
 			} else {
 				assign(solver, first, clause_i);
 			}
-unit_propagate_next:
+unit_propagate_next:;
 		}
 		for (int i = to_remove.length-1; i >= 0; i--) {
 			int rem = to_remove.values[i];
@@ -294,11 +306,42 @@ void backtrack_decision(struct solver* solver) {
 	assign(solver, -value, -1);
 }
 
+int backtrack_level(struct solver* solver, struct clause new) {
+	if (new.length == 1) return 0;
+	int highest = -1;
+	int second = -1;
+	for (int i = 0; i < new.length; i++) {
+		int level = solver->level[abs(new.values[i])];
+		if (level > highest) {
+			second = highest;
+			highest = level;
+		} else if (level > second) {
+			second = level;
+		}
+	}
+	return second;
+}
+
 void backtrack_learnt(struct solver* solver, struct clause new) {
-	int decision_index = solver->decisions.values[solver->decisions.length-1];
-	value value = solver->trail.values[decision_index];
-	undo_decision(solver);
-	assign(solver, -value, -1);
+	int level = backtrack_level(solver, new);
+	while (solver->decisions.length > level) undo_decision(solver);
+
+	if (new.length == 1) {
+		assign(solver, new.values[0], -1);
+	} else {
+		// put the unit in [0] and a current level literal in [1]
+		for (int i = 1; i < new.length; i++) {
+			value l = new.values[i];
+			if (solver->variables[abs(l)] == vundef) {
+				new.values[i] = new.values[0];
+				new.values[0] = l;
+			} else if (solver->level[abs(l)] > solver->level[abs(new.values[1])]) {
+				new.values[i] = new.values[1];
+				new.values[1] = l;
+			}
+		}
+		assign(solver, new.values[0], solver->problem.length-1);
+	}
 }
 
 
@@ -327,20 +370,32 @@ void init_two_watched(struct solver* solver) {
 int count_cur_level(struct solver* solver, struct clause clause) {
 	int n = 0;
 	for (int i = 0; i < clause.length; i++)
-		if (solver->level[clause.values[i]] == solver->decisions.length)
+		if (solver->level[abs(clause.values[i])] == solver->decisions.length)
 			n++;
 	return n;
 }
 
-bool should_resolve(struct clause clause, value literal) {
+bool clause_contains(struct clause clause, value literal) {
 	for (int i = 0; i < clause.length; i++)
-		if (clause.values[i] == -literal)
+		if (clause.values[i] == literal)
 			return true;
 	return false;
 }
 
 void resolve(struct clause* left, struct clause right, value literal) {
+	for (int i = 0; i < left->length; i++) {
+		if (left->values[i] == -literal) {
+			remove_clause_unord(left, i);
+			break;
+		}
+	}
 
+	for (int i = 0; i < right.length; i++) {
+		value l = right.values[i];
+		if (l != literal && !clause_contains(*left, l)) {
+			extend_clause(left, l);
+		}
+	}
 }
 
 struct clause analyze(struct solver* solver, int conflict) {
@@ -351,10 +406,9 @@ struct clause analyze(struct solver* solver, int conflict) {
 
 	int index = solver->trail.length-1;
 
-	// TODO:
 	while (count_cur_level(solver, ret) > 1) {
-		value literal = solver->trail.values[index];
-		if (should_resolve(ret, literal)) {
+		value literal = solver->trail.values[index--];
+		if (clause_contains(ret, -literal)) {
 			resolve(&ret, solver->problem.clauses[solver->reason[abs(literal)]], literal);
 		}
 	}
@@ -363,7 +417,6 @@ struct clause analyze(struct solver* solver, int conflict) {
 }
 
 void cdcl(struct solver* solver) {
-	// TODO: cdcl
 	// TODO: simplify
 
 	solver->solutions = 0;
@@ -375,42 +428,21 @@ void cdcl(struct solver* solver) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1) {
 
-			solver->conflicts++;
-			if (solver->conflicts%solver->len_variables == 0) printf(".");
+			if (++solver->conflicts%solver->len_variables == 0) printf(".");
 
-			if (solver->decisions.length == 0) {
-				if (solver->solutions) sat(solver);
-				else unsat(solver);
-			}
+			if (solver->decisions.length == 0) unsat(solver);
 
+			struct clause new = analyze(solver, conflict);
+			if (new.length == 0) unsat(solver);
 
-			// struct clause new = analyze(solver, conflict);
-			// if (new.length == 0) {
-			// 	if (solver->solutions) sat(solver);
-			// 	else unsat(solver);
-			// }
-			// if (new.length == 1) {
-			// 	extend_clause(&solver->units, new.values[0]);
-			// 	backtrack_learnt(solver, new);
-			// }
-			// else {
-			// 	extend_clauses(&solver->problem, new);
-			// 	add_watched_clause(solver, solver->problem.length-1);
-			// 	backtrack_learnt(solver, new);
-			// }
-			backtrack_decision(solver);
+			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
+			else extend_clauses(&solver->problem, new);
 
+			backtrack_learnt(solver, new);
 		}
 
-		if (solver->trail.length == solver->len_variables) {
-			new_solution(solver);
-
-			if (solver->decisions.length == 0) sat(solver);
-			backtrack_decision(solver);
-
-		} else {
-			assign_guess(solver, guess(solver));
-		}
+		if (solver->trail.length == solver->len_variables) sat(solver);
+		else assign_guess(solver, guess(solver));
 	}
 }
 
