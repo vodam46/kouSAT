@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <stdbool.h>
 
 typedef int value;
 
@@ -21,6 +22,9 @@ struct clauses {
 };
 
 struct solver {
+	bool solved;
+	bool result;
+
 	int solutions;
 	int conflicts;
 
@@ -47,4 +51,5 @@ struct solver {
 	struct clause decisions;
 };
 
-void solve(FILE*);
+struct solver* solve(FILE*);
+void destroy_solver(struct solver*);

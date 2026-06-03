@@ -3,6 +3,7 @@
 // TODO: conflict clause minimization
 // TODO: probing
 // TODO: restarts
+// TODO: clause deleting
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@ void print_clause(struct clause clause) {
 
 void print_clauses(struct clauses clauses) {
 	for (int i = 0; i < clauses.length; i++) {
+		// if (clauses.clauses[i].length > 1) continue;
 		printf("[%d] ", i);
 		print_clause(clauses.clauses[i]);
 	}
@@ -44,6 +46,7 @@ void print_variables(struct solver* solver) {
 }
 
 void print_watched(struct solver* solver) {
+	if (solver->watched_clauses[0].clauses == NULL) return;
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		printf("-%d = ", i);
 		print_clause(solver->watched_clauses[0].clauses[i]);
@@ -80,11 +83,11 @@ void print_solver(struct solver* solver) {
 	printf("units ");
 	print_clause(solver->units);
 
-	printf("watched\n");
-	print_watched(solver);
+	// printf("watched\n");
+	// print_watched(solver);
 
-	printf("variables\n");
-	print_variables(solver);
+	// printf("variables\n");
+	// print_variables(solver);
 
 	printf("trail\n");
 	print_clause(solver->trail);
@@ -92,15 +95,35 @@ void print_solver(struct solver* solver) {
 	printf("decisions\n");
 	print_clause(solver->decisions);
 
-	printf("level\n");
-	print_level(solver);
+	// printf("level\n");
+	// print_level(solver);
 
-	printf("reason\n");
-	print_reason(solver);
+	// printf("reason\n");
+	// print_reason(solver);
 
 	printf("queue %d\n", solver->queue);
 
 	printf("---\n");
+}
+
+void destroy_solver(struct solver* solver) {
+	for (int i = 0; i < solver->problem.length; i++)
+		free(solver->problem.clauses[i].values);
+	free(solver->problem.clauses);
+	free(solver->units.values);
+
+	free(solver->variables);
+	free(solver->reason);
+	free(solver->level);
+	for (int b = 0; b < 2; b++) {
+		for (int i = 1; i < solver->len_variables+1; i++)
+			free(solver->watched_clauses[b].clauses[i].values);
+		free(solver->watched_clauses[b].clauses);
+	}
+	free(solver->trail.values);
+	free(solver->decisions.values);
+
+	free(solver);
 }
 
 void new_solution(struct solver* solver) {
@@ -110,18 +133,18 @@ void new_solution(struct solver* solver) {
 }
 
 void unsat(struct solver* solver) {
-	print_solver(solver);
+	solver->solved = true;
+	solver->result = false;
 
 	printf("\ns UNSAT\n");
-	exit(0);
 }
 void sat(struct solver* solver) {
-	print_solver(solver);
+	solver->solved = true;
+	solver->result = true;
 
 	new_solution(solver);
 
 	printf("\ns SAT\n");
-	exit(0);
 }
 
 
@@ -146,6 +169,12 @@ void extend_clauses(struct clauses* clauses, struct clause clause) {
 	clauses->length++;
 	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
 	clauses->clauses[clauses->length-1] = clause;
+}
+
+void remove_clauses_unord(struct clauses* clauses, unsigned index) {
+	clauses->length--;
+	clauses->clauses[index] = clauses->clauses[clauses->length];
+	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
 }
 
 void assign(struct solver* solver, value value, int reason) {
@@ -195,6 +224,44 @@ void parse(FILE* file, struct solver* solver) {
 	fclose(file);
 }
 
+bool preprocess_unit_propagate(struct solver* solver) {
+	bool change = false;
+
+	for (int clause_i = 0; clause_i < solver->problem.length; clause_i++) {
+		struct clause* clause = &solver->problem.clauses[clause_i];
+		for (int i = 0; i < clause->length; i++) {
+			value l = clause->values[i];
+			if (solver->variables[abs(l)] == get_vbool(l)) {
+				// satisfied
+				remove_clauses_unord(&solver->problem, clause_i--);
+				change = true;
+				break;
+			} else if (solver->variables[abs(l)] == get_vbool(-l)) {
+				// variable is false
+				remove_clause_unord(clause, i--);
+				change = true;
+				if (clause->length == 1) {
+					// unit clause
+					value unit = clause->values[0];
+					if (solver->variables[abs(unit)] == get_vbool(-unit)) {
+						unsat(solver);
+						return true;
+					}
+					if (solver->variables[abs(unit)] == vundef) {
+						extend_clause(&solver->units, unit);
+						assign(solver, unit, -1);
+						solver->queue++;
+					}
+					remove_clauses_unord(&solver->problem, clause_i--);
+					break;
+				}
+			}
+		}
+	}
+
+	return change;
+}
+
 void preprocess(struct solver* solver) {
 	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
 	solver->level = malloc((solver->len_variables+1) * sizeof(int));
@@ -209,10 +276,20 @@ void preprocess(struct solver* solver) {
 			assign(solver, unit, -1);
 		} else if (solver->variables[index] != v) {
 			unsat(solver);
+			return;
 		}
 	}
 
-	// TODO: actual preprocessing
+	// TODO: more preprocessing
+	while (
+			!solver->solved
+			&& (
+				preprocess_unit_propagate(solver)
+				// TODO: pure literals? (only when not finding all solutions)
+				// TODO: (X | Y) & (X | -Y) -> X
+				// TODO: subsumed clauses
+			   )
+		  );
 }
 
 int unit_propagate(struct solver* solver) {
@@ -410,25 +487,31 @@ struct clause analyze(struct solver* solver, int conflict) {
 	return ret;
 }
 
-void cdcl(struct solver* solver) {
-	solver->solutions = 0;
-	solver->conflicts = 0;
+struct solver* cdcl(struct solver* solver) {
+	// TODO: clean up goto
+	if (!solver->solved)
+		init_two_watched(solver);
 
-	init_two_watched(solver);
-
-	while (true) {
+	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1) {
 
 			if (++solver->conflicts%solver->len_variables == 0) {
 				printf(".");
-				printf("%d\n", solver->problem.length);
+				// printf("%d\n", solver->problem.length);
+				fflush(stdout);
 			}
 
-			if (solver->decisions.length == 0) unsat(solver);
+			if (solver->decisions.length == 0) {
+				unsat(solver);
+				goto cdcl_end;
+			}
 
 			struct clause new = analyze(solver, conflict);
-			if (new.length == 0) unsat(solver);
+			if (new.length == 0) {
+				unsat(solver);
+				goto cdcl_end;
+			}
 
 			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
 			else extend_clauses(&solver->problem, new);
@@ -439,23 +522,33 @@ void cdcl(struct solver* solver) {
 		if (solver->trail.length == solver->len_variables) sat(solver);
 		else assign_guess(solver, guess(solver));
 	}
+cdcl_end:
+	return solver;
 }
 
-void solve(FILE* file) {
-	struct solver solver = {
-		.problem={NULL, 0},
-		.units={NULL, 0},
-		.variables=NULL,
-		.len_variables=0,
-		.reason=NULL,
-		.level=NULL,
-		.watched_clauses={NULL, 0},
-		.queue=0,
-		.trail={NULL, 0},
-		.decisions={NULL, 0},
-	};
+struct solver* solve(FILE* file) {
+	struct solver* solver = malloc(sizeof(struct solver));
 
-	parse(file, &solver);
-	preprocess(&solver);
-	cdcl(&solver);
+	struct clause  nilclause  = {NULL, 0};
+	struct clauses nilclauses = {NULL, 0};
+
+	solver->solved				= false;
+	solver->problem				= nilclauses;
+	solver->units				= nilclause;
+	solver->variables			= NULL;
+	solver->len_variables		= 0;
+	solver->reason				= NULL;
+	solver->level				= NULL;
+	solver->watched_clauses[0]	= nilclauses;
+	solver->watched_clauses[1] 	= nilclauses;
+	solver->queue				= 0;
+	solver->trail				= nilclause;
+	solver->decisions			= nilclause;
+	solver->solutions			= 0;
+	solver->conflicts 			= 0;
+
+
+	parse(file, solver);
+	preprocess(solver);
+	return cdcl(solver);
 }
