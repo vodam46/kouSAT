@@ -32,7 +32,6 @@ struct solver {
 	int len_variables;
 
 	int* reason;
-	// TODO: level
 	int* level;
 
 	// for each literal, a list of clauses
@@ -40,11 +39,8 @@ struct solver {
 	// [0] is false, [1] is true
 	struct clauses watched_clauses[2];
 
-	// TODO: do it with an index into trail?
-	// would have to keep track of it for backtracking too
-	// just like minisat does it
-	// but would be simpler
-	struct clause tocheck;
+	// index into trail of literals that need to be checked
+	int queue;
 
 	struct clause trail;
 

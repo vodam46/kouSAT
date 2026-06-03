@@ -1,8 +1,8 @@
-// TODO: memset? how does it work
 // TODO: all solutions, not just the first one it finds -> add negative of choices as new clause
 // TODO: check that everything is correct
-
-#include <assert.h>
+// TODO: conflict clause minimization
+// TODO: probing
+// TODO: restarts
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,8 +98,8 @@ void print_solver(struct solver* solver) {
 	printf("reason\n");
 	print_reason(solver);
 
-	printf("tocheck\n");
-	print_clause(solver->tocheck);
+	printf("queue %d\n", solver->queue);
+
 	printf("---\n");
 }
 
@@ -155,7 +155,6 @@ void assign(struct solver* solver, value value, int reason) {
 	solver->level[index] = solver->decisions.length;
 	solver->reason[index] = reason;
 	extend_clause(&solver->trail, value);
-	extend_clause(&solver->tocheck, value);
 }
 
 void parse(FILE* file, struct solver* solver) {
@@ -217,17 +216,16 @@ void preprocess(struct solver* solver) {
 }
 
 int unit_propagate(struct solver* solver) {
-	while (solver->tocheck.length > 0) {
-		value check = solver->tocheck.values[0];
-		remove_clause_unord(&solver->tocheck, 0);
+	while (solver->queue < solver->trail.length) {
+		value check = solver->trail.values[solver->queue++];
 		struct clause clauses_i = solver->watched_clauses[check<0].clauses[abs(check)];
 		struct clause to_remove = {NULL, 0};
 
 		for (int var_i = 0; var_i < clauses_i.length; var_i++) {
 			int clause_i = clauses_i.values[var_i];
 			struct clause clause = solver->problem.clauses[clause_i];
-			printf("%d -> ", check);
-			print_clause(clause);
+
+			// make sure the literal is in [1]
 			if (clause.values[0] == -check) {
 				clause.values[0] = clause.values[1];
 				clause.values[1] = -check;
@@ -251,8 +249,6 @@ int unit_propagate(struct solver* solver) {
 
 			// couldnt find any, is unit
 			if (solver->variables[abs(clause.values[0])] != vundef) {
-				free(solver->tocheck.values);
-				solver->tocheck = (struct clause){NULL, 0};
 				for (int i = to_remove.length-1; i >= 0; i--) {
 					int rem = to_remove.values[i];
 					remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
@@ -268,7 +264,6 @@ unit_propagate_next:;
 			remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
 		}
 	}
-
 
 	return -1;
 }
@@ -299,52 +294,6 @@ void undo_decision(struct solver* solver) {
 	}
 }
 
-void backtrack_decision(struct solver* solver) {
-	int decision_index = solver->decisions.values[solver->decisions.length-1];
-	value value = solver->trail.values[decision_index];
-	undo_decision(solver);
-	assign(solver, -value, -1);
-}
-
-int backtrack_level(struct solver* solver, struct clause new) {
-	if (new.length == 1) return 0;
-	int highest = -1;
-	int second = -1;
-	for (int i = 0; i < new.length; i++) {
-		int level = solver->level[abs(new.values[i])];
-		if (level > highest) {
-			second = highest;
-			highest = level;
-		} else if (level > second) {
-			second = level;
-		}
-	}
-	return second;
-}
-
-void backtrack_learnt(struct solver* solver, struct clause new) {
-	int level = backtrack_level(solver, new);
-	while (solver->decisions.length > level) undo_decision(solver);
-
-	if (new.length == 1) {
-		assign(solver, new.values[0], -1);
-	} else {
-		// put the unit in [0] and a current level literal in [1]
-		for (int i = 1; i < new.length; i++) {
-			value l = new.values[i];
-			if (solver->variables[abs(l)] == vundef) {
-				new.values[i] = new.values[0];
-				new.values[0] = l;
-			} else if (solver->level[abs(l)] > solver->level[abs(new.values[1])]) {
-				new.values[i] = new.values[1];
-				new.values[1] = l;
-			}
-		}
-		assign(solver, new.values[0], solver->problem.length-1);
-	}
-}
-
-
 void add_watched_clause(struct solver* solver, int index) {
 	struct clause clause = solver->problem.clauses[index];
 	for (int j = 0; j < 2; j++) {
@@ -366,6 +315,49 @@ void init_two_watched(struct solver* solver) {
 		add_watched_clause(solver, i);
 	}
 }
+
+int backtrack_level(struct solver* solver, struct clause new) {
+	if (new.length == 1) return 0;
+	int highest = 0;
+	int second = 0;
+	for (int i = 0; i < new.length; i++) {
+		int level = solver->level[abs(new.values[i])];
+		if (level > highest) {
+			second = highest;
+			highest = level;
+		} else if (level > second) {
+			second = level;
+		}
+	}
+	return second;
+}
+
+void backtrack_learnt(struct solver* solver, struct clause new) {
+	int level = backtrack_level(solver, new);
+	while (solver->decisions.length > level) undo_decision(solver);
+	solver->queue = solver->trail.length;
+
+	if (new.length == 1) {
+		assign(solver, new.values[0], -1);
+	} else {
+		// TODO: optimize
+
+		// put the unit in [0] and a current level literal in [1]
+		for (int i = 1; i < new.length; i++) {
+			value l = new.values[i];
+			if (solver->variables[abs(l)] == vundef) {
+				new.values[i] = new.values[0];
+				new.values[0] = l;
+			} else if (solver->level[abs(l)] > solver->level[abs(new.values[1])]) {
+				new.values[i] = new.values[1];
+				new.values[1] = l;
+			}
+		}
+		add_watched_clause(solver, solver->problem.length-1);
+		assign(solver, new.values[0], solver->problem.length-1);
+	}
+}
+
 
 int count_cur_level(struct solver* solver, struct clause clause) {
 	int n = 0;
@@ -413,12 +405,12 @@ struct clause analyze(struct solver* solver, int conflict) {
 		}
 	}
 
+	// TODO: minimize
+
 	return ret;
 }
 
 void cdcl(struct solver* solver) {
-	// TODO: simplify
-
 	solver->solutions = 0;
 	solver->conflicts = 0;
 
@@ -428,7 +420,10 @@ void cdcl(struct solver* solver) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1) {
 
-			if (++solver->conflicts%solver->len_variables == 0) printf(".");
+			if (++solver->conflicts%solver->len_variables == 0) {
+				printf(".");
+				printf("%d\n", solver->problem.length);
+			}
 
 			if (solver->decisions.length == 0) unsat(solver);
 
@@ -455,7 +450,7 @@ void solve(FILE* file) {
 		.reason=NULL,
 		.level=NULL,
 		.watched_clauses={NULL, 0},
-		.tocheck={NULL, 0},
+		.queue=0,
 		.trail={NULL, 0},
 		.decisions={NULL, 0},
 	};
