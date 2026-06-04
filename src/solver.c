@@ -1,7 +1,7 @@
 // TODO: all solutions, not just the first one it finds -> add negative of choices as new clause
 // TODO: check that everything is correct
 // TODO: conflict clause minimization
-// TODO: probing
+// TODO: probing -> some sort of way to do it along side preprocessing
 // TODO: restarts
 // TODO: clause deleting
 
@@ -78,16 +78,16 @@ void print_solver(struct solver* solver) {
 	printf("solutions %d\n", solver->solutions);
 	printf("conflicts %d\n", solver->conflicts);
 
-	printf("problem\n");
-	print_clauses(solver->problem);
-	printf("units ");
-	print_clause(solver->units);
+	// printf("problem\n");
+	// print_clauses(solver->problem);
+	// printf("units ");
+	// print_clause(solver->units);
 
 	// printf("watched\n");
 	// print_watched(solver);
 
-	// printf("variables\n");
-	// print_variables(solver);
+	printf("variables\n");
+	print_variables(solver);
 
 	printf("trail\n");
 	print_clause(solver->trail);
@@ -177,6 +177,13 @@ void remove_clauses_unord(struct clauses* clauses, unsigned index) {
 	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
 }
 
+bool clause_contains(struct clause clause, value literal) {
+	for (int i = 0; i < clause.length; i++)
+		if (clause.values[i] == literal)
+			return true;
+	return false;
+}
+
 void assign(struct solver* solver, value value, int reason) {
 	int index = abs(value);
 	enum vbool val = get_vbool(value);
@@ -262,6 +269,44 @@ bool preprocess_unit_propagate(struct solver* solver) {
 	return change;
 }
 
+bool preprocess_pure_literals(struct solver* solver) {
+	bool change = false;
+
+	int* counts[2];
+	counts[0] = calloc((solver->len_variables+1), sizeof(int));
+	counts[1] = calloc((solver->len_variables+1), sizeof(int));
+
+	for (int i = 0; i < solver->units.length; i++) {
+		counts[0][i]++;
+		counts[1][i]++;
+	}
+
+	for (int clause_i = 0; clause_i < solver->problem.length; clause_i++) {
+		struct clause clause = solver->problem.clauses[clause_i];
+		for (int i = 0; i < clause.length; i++) {
+			value l = clause.values[i];
+			counts[l>0][abs(l)]++;
+		}
+	}
+	for (int i = 1; i < solver->len_variables+1; i++) {
+		if (solver->variables[i] != vundef) continue;
+		if (counts[0][i] == 0) {
+			assign(solver, i, -1);
+			extend_clause(&solver->units, i);
+			change = true;
+		} else if (counts[1][i] == 0) {
+			assign(solver, -i, -1);
+			extend_clause(&solver->units, -i);
+			change = true;
+		}
+	}
+
+	free(counts[0]);
+	free(counts[1]);
+
+	return change;
+}
+
 void preprocess(struct solver* solver) {
 	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
 	solver->level = malloc((solver->len_variables+1) * sizeof(int));
@@ -281,15 +326,20 @@ void preprocess(struct solver* solver) {
 	}
 
 	// TODO: more preprocessing
+	printf("%d\n", solver->problem.length);
 	while (
 			!solver->solved
 			&& (
 				preprocess_unit_propagate(solver)
-				// TODO: pure literals? (only when not finding all solutions)
-				// TODO: (X | Y) & (X | -Y) -> X
-				// TODO: subsumed clauses
+
+				// comment out when finding all solutions
+				|| preprocess_pure_literals(solver)
+
+				// TODO: (X | Y) & (X | -Y) -> X = failed literal probing (how?)
+				// TODO: subsumed clauses?
 			   )
 		  );
+	printf("%d\n", solver->problem.length);
 }
 
 int unit_propagate(struct solver* solver) {
@@ -351,6 +401,7 @@ value guess(struct solver* solver) {
 		if (solver->variables[i] == vundef)
 			return i;
 
+	printf("guessing error\n");
 	exit(1);
 	return 0;
 }
@@ -444,13 +495,6 @@ int count_cur_level(struct solver* solver, struct clause clause) {
 	return n;
 }
 
-bool clause_contains(struct clause clause, value literal) {
-	for (int i = 0; i < clause.length; i++)
-		if (clause.values[i] == literal)
-			return true;
-	return false;
-}
-
 void resolve(struct clause* left, struct clause right, value literal) {
 	for (int i = 0; i < left->length; i++) {
 		if (left->values[i] == -literal) {
@@ -487,10 +531,18 @@ struct clause analyze(struct solver* solver, int conflict) {
 	return ret;
 }
 
+void probe(struct solver* solver) {
+	// TODO: for each literal - try true/false
+	// if conflict -> that literal is opposite, learn the conflict (if good/short)
+	// if variable true in both cases -> new unit
+}
+
 struct solver* cdcl(struct solver* solver) {
 	// TODO: clean up goto
-	if (!solver->solved)
-		init_two_watched(solver);
+	if (solver->solved) return solver;
+
+	init_two_watched(solver);
+	probe(solver);
 
 	while (!solver->solved) {
 		int conflict;
