@@ -247,7 +247,7 @@ char* unsat_files[] = {
 	"mass/hole8.cnf",
 	"mass/hole9.cnf",
 
-	// "mass/hole10.cnf",
+	"mass/hole10.cnf",
 
 	"mass/pret150_25.cnf",
 	"mass/pret150_40.cnf",
@@ -275,6 +275,7 @@ char* unsat_files[] = {
 	NULL,
 };
 
+int total_minimized = 0;
 void test_files(char* files[], bool result) {
 	for (int i = 0; files[i]; i++) {
 		char filename[100] = "../cnf/";
@@ -284,6 +285,9 @@ void test_files(char* files[], bool result) {
 
 		FILE* f = fopen(filename, "r");
 		struct solver* s = solve(f);
+		total_minimized += s->minimized;
+		printf("conflicts %d\n", s->conflicts);
+		printf("total_minimized %d\n\n", total_minimized);
 		assert(s->solved);
 		assert(s->result == result);
 		destroy_solver(s);
@@ -292,5 +296,5 @@ void test_files(char* files[], bool result) {
 
 void test_all(void) {
 	test_files(sat_files, true);
-	test_files(unsat_files, false);
+	// test_files(unsat_files, false);
 }

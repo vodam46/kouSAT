@@ -28,6 +28,8 @@ struct solver {
 	int solutions;
 	int conflicts;
 
+	int minimized;
+
 	struct clauses problem;
 	struct clause units;
 	// TODO: implications?

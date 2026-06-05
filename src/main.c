@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
 		file = fopen(argv[1], "r");
 	}
 	// TODO: parse args, if any
-	solve(file);
+	destroy_solver(solve(file));
 
 #endif
 	return 0;

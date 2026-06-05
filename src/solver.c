@@ -136,6 +136,7 @@ void unsat(struct solver* solver) {
 	solver->solved = true;
 	solver->result = false;
 
+	printf("minimized %d\n", solver->minimized);
 	printf("\ns UNSAT\n");
 }
 void sat(struct solver* solver) {
@@ -143,6 +144,7 @@ void sat(struct solver* solver) {
 	solver->result = true;
 
 	new_solution(solver);
+	printf("\nminimized %d\n", solver->minimized);
 
 	printf("\ns SAT\n");
 }
@@ -173,6 +175,7 @@ void extend_clauses(struct clauses* clauses, struct clause clause) {
 
 void remove_clauses_unord(struct clauses* clauses, unsigned index) {
 	clauses->length--;
+	free(clauses->clauses[index].values);
 	clauses->clauses[index] = clauses->clauses[clauses->length];
 	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
 }
@@ -216,8 +219,10 @@ void parse(FILE* file, struct solver* solver) {
 		value value = 0;
 		fscanf(file, "%d", &value);
 		if (value == 0) {
-			if (clause.length == 1)
+			if (clause.length == 1) {
 				extend_clause(&solver->units, clause.values[0]);
+				free(clause.values);
+			}
 			else
 				extend_clauses(&solver->problem, clause);
 
@@ -380,6 +385,7 @@ int unit_propagate(struct solver* solver) {
 					int rem = to_remove.values[i];
 					remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
 				}
+				free(to_remove.values);
 				return clause_i;
 			} else {
 				assign(solver, first, clause_i);
@@ -390,6 +396,7 @@ unit_propagate_next:;
 			int rem = to_remove.values[i];
 			remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
 		}
+		free(to_remove.values);
 	}
 
 	return -1;
@@ -511,6 +518,17 @@ void resolve(struct clause* left, struct clause right, value literal) {
 	}
 }
 
+bool conflict_subsumes(struct solver* solver, struct clause conflict, struct clause reason, value l) {
+	for (int i = 0; i < reason.length; i++) {
+		value v = reason.values[i];
+		if (v != -l && solver->level[abs(v)] != 0 && !clause_contains(conflict, v)) {
+			// TODO: check if v can be ignored anyway (reason subsumes conflict)
+			return false;
+		}
+	}
+	return true;
+}
+
 struct clause analyze(struct solver* solver, int conflict) {
 	struct clause ret;
 	ret.length = solver->problem.clauses[conflict].length;
@@ -526,7 +544,71 @@ struct clause analyze(struct solver* solver, int conflict) {
 		}
 	}
 
-	// TODO: minimize
+	// minimize
+	// mark all clause as ignore
+	// go throuh the trail
+	// - if level == 0 -> can remove, ignore
+	// - if dependents (ignore/remove) -> can remove, ignore
+	// TODO: check if its actually faster
+
+	// struct clause marked = {NULL, 0};
+	// for (int i = 0; i < ret.length; i++) {
+	// 	value l = ret.values[i];
+	// 	if (solver->reason[abs(l)] != -1) {
+	// 		if (conflict_subsumes(
+	// 					solver,
+	// 					ret,
+	// 					solver->problem.clauses[solver->reason[abs(l)]],
+	// 					l
+	// 					)) {
+	// 			extend_clause(&marked, l);
+	// 		}
+	// 	}
+	// }
+	// for (int i = 0; i < ret.length; i++) {
+	// 	if (
+	// 			clause_contains(marked, ret.values[i])
+	// 			|| solver->level[abs(ret.values[i])] == 0
+	// 	   ) {
+	// 		solver->minimized++;
+	// 		remove_clause_unord(&ret, i--);
+	// 	}
+	// }
+	// free(marked.values);
+
+	bool* ignore = calloc(solver->len_variables+1, sizeof(bool));
+	bool* remove = calloc(solver->len_variables+1, sizeof(bool));
+	for (int i = 0; i < ret.length; i++) ignore[abs(ret.values[i])] = true;
+	for (int lit_i = 0; lit_i < solver->trail.length; lit_i++) {
+		value l = solver->trail.values[lit_i];
+		int index = abs(l);
+		if (solver->level[index] == 0) {
+			ignore[index] = true;
+			remove[index] = true;
+			continue;
+		}
+		if (solver->reason[index] == -1) continue;
+		struct clause reason = solver->problem.clauses[solver->reason[index]];
+		bool can_ignore = true;
+		for (int i = 0; i < reason.length; i++) {
+			if (!ignore[abs(reason.values[i])]) {
+				can_ignore = false;
+				break;
+			}
+		}
+		if (can_ignore) {
+			ignore[index] = true;
+			remove[index] = true;
+		}
+	}
+	for (int i = 0; i < ret.length; i++) {
+		if (remove[abs(ret.values[i])]) {
+			solver->minimized++;
+			remove_clause_unord(&ret, i--);
+		}
+	}
+	free(ignore);
+	free(remove);
 
 	return ret;
 }
@@ -598,6 +680,7 @@ struct solver* solve(FILE* file) {
 	solver->decisions			= nilclause;
 	solver->solutions			= 0;
 	solver->conflicts 			= 0;
+	solver->minimized			= 0;
 
 
 	parse(file, solver);

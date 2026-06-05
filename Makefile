@@ -20,7 +20,7 @@ clean:
 	-rm -Rf obj dep bin valgrind profile.txt gmon.out
 
 run: $(OUT)
-	./$(OUT) $(FILE)
+	time ./$(OUT) $(FILE)
 
 
 
@@ -55,7 +55,7 @@ debug: debug-build
 
 profile: CFLAGS+=-pg
 profile: debug-build
-	./$(OUT_DEBUG)
+	time ./$(OUT_DEBUG)
 	gprof $(OUT_DEBUG) > profile.txt
 	less profile.txt
 
@@ -68,7 +68,7 @@ count:
 test: CFLAGS+=-DTEST
 test: OUT=$(OUT_TEST)
 test: $(OUT)
-	./$(OUT)
+	time ./$(OUT)
 
 ifeq (,$(filter $(MAKECMDGOALS), clean count test))
 include $(addprefix dep/, $(sources:.c=.d))
