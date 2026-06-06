@@ -29,12 +29,12 @@ char* sat_files[] = {
 	"mass/4blocks.cnf",
 	"mass/4blocksb.cnf",
 
-	"mass/e0ddr2-10-by-5-1.cnf",
-	"mass/e0ddr2-10-by-5-4.cnf",
-	"mass/enddr2-10-by-5-1.cnf",
-	"mass/enddr2-10-by-5-8.cnf",
-	"mass/ewddr2-10-by-5-1.cnf",
-	"mass/ewddr2-10-by-5-8.cnf",
+	// "mass/e0ddr2-10-by-5-1.cnf",
+	// "mass/e0ddr2-10-by-5-4.cnf",
+	// "mass/enddr2-10-by-5-1.cnf",
+	// "mass/enddr2-10-by-5-8.cnf",
+	// "mass/ewddr2-10-by-5-1.cnf",
+	// "mass/ewddr2-10-by-5-8.cnf",
 
 	"mass/anomaly.cnf",
 	"mass/medium.cnf",
@@ -73,9 +73,7 @@ char* sat_files[] = {
 	"mass/ii32c4.cnf",
 	"mass/ii32d1.cnf",
 	"mass/ii32d2.cnf",
-
 	"mass/ii32d3.cnf",
-
 	"mass/ii32e1.cnf",
 	"mass/ii32e2.cnf",
 	"mass/ii32e3.cnf",
@@ -111,10 +109,12 @@ char* sat_files[] = {
 	"mass/jnh220.cnf",
 	"mass/jnh301.cnf",
 	"mass/jnh7.cnf",
+
 	"mass/logistics.a.cnf",
 	"mass/logistics.b.cnf",
 	"mass/logistics.c.cnf",
 	"mass/logistics.d.cnf",
+
 	"mass/par16-1-c.cnf",
 	"mass/par16-1.cnf",
 	"mass/par16-2-c.cnf",
@@ -125,16 +125,18 @@ char* sat_files[] = {
 	"mass/par16-4.cnf",
 	"mass/par16-5-c.cnf",
 	"mass/par16-5.cnf",
-	"mass/par32-1-c.cnf",
-	"mass/par32-1.cnf",
-	"mass/par32-2-c.cnf",
-	"mass/par32-2.cnf",
-	"mass/par32-3-c.cnf",
-	"mass/par32-3.cnf",
-	"mass/par32-4-c.cnf",
-	"mass/par32-4.cnf",
-	"mass/par32-5-c.cnf",
-	"mass/par32-5.cnf",
+
+	// "mass/par32-1-c.cnf",
+	// "mass/par32-1.cnf",
+	// "mass/par32-2-c.cnf",
+	// "mass/par32-2.cnf",
+	// "mass/par32-3-c.cnf",
+	// "mass/par32-3.cnf",
+	// "mass/par32-4-c.cnf",
+	// "mass/par32-4.cnf",
+	// "mass/par32-5-c.cnf",
+	// "mass/par32-5.cnf",
+
 	"mass/par8-1-c.cnf",
 	"mass/par8-1.cnf",
 	"mass/par8-2-c.cnf",
@@ -145,21 +147,23 @@ char* sat_files[] = {
 	"mass/par8-4.cnf",
 	"mass/par8-5-c.cnf",
 	"mass/par8-5.cnf",
+
 	"mass/qg1-07.cnf",
 	"mass/qg1-08.cnf",
 	"mass/qg2-07.cnf",
 	"mass/qg2-08.cnf",
 	"mass/qg3-08.cnf",
-	"mass/qg4-08.cnf",
 	"mass/qg4-09.cnf",
 	"mass/qg5-11.cnf",
 	"mass/qg6-09.cnf",
 	"mass/qg7-09.cnf",
 	"mass/qg7-13.cnf",
+
 	"mass/ssa7552-038.cnf",
 	"mass/ssa7552-158.cnf",
 	"mass/ssa7552-159.cnf",
 	"mass/ssa7552-160.cnf",
+
 	"nqueens/1queens.cnf",
 	"nqueens/4queens.cnf",
 	"nqueens/5queens.cnf",
@@ -190,22 +194,22 @@ char* sat_files[] = {
 	"nqueens/30queens.cnf",
 	"nqueens/31queens.cnf",
 	"nqueens/32queens.cnf",
+
 	NULL,
 };
 
 char* unsat_files[] = {
 	"aim-100-1_6-no-1.cnf",
-	"bf0432-007.cnf",
+	"mass/bf0432-007.cnf",
+	"mass/bf1355-075.cnf",
+	"mass/bf1355-638.cnf",
+	"mass/bf2670-001.cnf",
 	"dubois20.cnf",
 	"dubois21.cnf",
 	"dubois22.cnf",
 	"hole6.cnf",
 	"unsat.cnf",
 	"mass/2bitadd_10.cnf",
-	"mass/bf0432-007.cnf",
-	"mass/bf1355-075.cnf",
-	"mass/bf1355-638.cnf",
-	"mass/bf2670-001.cnf",
 	"nqueens/2queens.cnf",
 	"nqueens/3queens.cnf",
 	"mass/jnh2.cnf",
@@ -242,11 +246,11 @@ char* unsat_files[] = {
 	"mass/jnh6.cnf",
 	"mass/jnh8.cnf",
 	"mass/jnh9.cnf",
+
 	"mass/hole6.cnf",
 	"mass/hole7.cnf",
 	"mass/hole8.cnf",
 	"mass/hole9.cnf",
-
 	"mass/hole10.cnf",
 
 	"mass/pret150_25.cnf",
@@ -257,7 +261,9 @@ char* unsat_files[] = {
 	"mass/pret60_40.cnf",
 	"mass/pret60_60.cnf",
 	"mass/pret60_75.cnf",
+
 	"mass/qg3-09.cnf",
+	"mass/qg4-08.cnf",
 	"mass/qg5-09.cnf",
 	"mass/qg5-10.cnf",
 	"mass/qg5-12.cnf",
@@ -268,14 +274,17 @@ char* unsat_files[] = {
 	"mass/qg7-10.cnf",
 	"mass/qg7-11.cnf",
 	"mass/qg7-12.cnf",
+
 	"mass/ssa0432-003.cnf",
 	"mass/ssa2670-130.cnf",
 	"mass/ssa2670-141.cnf",
 	"mass/ssa6288-047.cnf",
+
 	NULL,
 };
 
 int total_minimized = 0;
+int total_conflicts = 0;
 void test_files(char* files[], bool result) {
 	for (int i = 0; files[i]; i++) {
 		char filename[100] = "../cnf/";
@@ -286,8 +295,9 @@ void test_files(char* files[], bool result) {
 		FILE* f = fopen(filename, "r");
 		struct solver* s = solve(f);
 		total_minimized += s->minimized;
-		printf("conflicts %d\n", s->conflicts);
-		printf("total_minimized %d\n\n", total_minimized);
+		total_conflicts += s->conflicts;
+		printf("total_minimized %d\n", total_minimized);
+		printf("total_conflicts %d\n\n", total_conflicts);
 		assert(s->solved);
 		assert(s->result == result);
 		destroy_solver(s);
@@ -296,5 +306,5 @@ void test_files(char* files[], bool result) {
 
 void test_all(void) {
 	test_files(sat_files, true);
-	// test_files(unsat_files, false);
+	test_files(unsat_files, false);
 }

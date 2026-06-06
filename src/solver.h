@@ -28,12 +28,18 @@ struct solver {
 	int solutions;
 	int conflicts;
 
+	int restarts;
+	int conflicts_until_restart;
+
 	int minimized;
 
 	struct clauses problem;
 	struct clause units;
 	// TODO: implications?
 
+	double* vsids;
+	double vsids_factor;
+	bool* phase;
 	enum vbool* variables;
 	int len_variables;
 
