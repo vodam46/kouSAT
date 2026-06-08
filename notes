@@ -1,0 +1,58 @@
+fix the top level architecture, its a mess
+	solver struct
+		- parse dimacs file
+		- initialize data structures
+		- solve
+
+	generalize/modularize parts of the code, to be easily replaceable
+
+
+
+
+
+clear all the todos
+
+more preprocessing
+bve - how to then reconstruct solution? similair to blocked clause? -> push onto "stack" and flip variable if unsat
+	eliminate var if true*false <= true+false
+
+allsat - as an argument, and parameter of the solver?
+
+for each function, note the requirements, invariant, and result
+	write documentation for the internals
+
+read all the pdfs i downloaded on sat solving
+	!!! mark down all the interesting ideas in them
+
+separate solving and data structure init
+
+look into what opensat.org was? (mentioned in minisat paper)
+
+https://github.com/urbanophile/awesome-sat-solvers
+
+input in dimacs format
+output according to SAT competition -> "c TEXT", "v LITERALS", "s (SATISFIABLE, UNSATISFIABLE, UNKNOWN)"
+two watched literals
+cdcl - try different learning schemes
+decision heuristic (ex. vsids)
+restarts
+model generation -> "v LITERALS 0"
+
+phase saving, rephasing,
+clause deletion
+clause minimization
+(pre|in)processing (pure literal elimination, removal of subsumed clauses, blocked clause elimination, ...)
+if (pre|in)processing -> model generation of original formula
+proof gen for unsat (DRUP/DRAT) - https://www.msoos.org/2022/04/proof-traces-for-sat-solvers/
+assumptions / incremental solving (minisat)
+unsat core generation
+failed assumption literals
+clause vivification
+
+solve statistics
+
+implement everything minisat does
+
+http://www.satlive.org/
+
+two watched literals - special watcher struct (store the opposite literal)

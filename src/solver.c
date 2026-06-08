@@ -7,6 +7,8 @@
 // TODO: better separation of initialization and logic (preprocess)
 // TODO: specialized data structures, not just clause(s) for everything
 // TODO: vsids queue
+// TODO: bounded variable elimination (preprocessing)
+// TODO: harden parsing - fault tolerant
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,7 +48,7 @@ void print_variables(struct solver* solver) {
 		if (solver->variables[i] == vfalse) printf("-%d ", i);
 		if (solver->variables[i] == vtrue) printf("%d ", i);
 	}
-	printf("\n");
+	printf("0 \n");
 }
 
 void print_watched(struct solver* solver) {
@@ -181,6 +183,11 @@ void remove_clause_unord(struct clause* clause, unsigned index) {
 	clause->values = realloc(clause->values, clause->length * sizeof(value));
 }
 
+void reduce_clause(struct clause* clause, unsigned length) {
+	clause->length -= length;
+	clause->values = realloc(clause->values, clause->length * sizeof(int));
+}
+
 void extend_clauses(struct clauses* clauses, struct clause clause) {
 	clauses->length++;
 	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
@@ -224,13 +231,12 @@ void parse(FILE* file, struct solver* solver) {
 		printf("invalid problem line\n\"%s\"", line);
 		exit(1);
 	}
-	int length;
-	sscanf(line, "p cnf %d %d", &solver->len_variables, &length);
+	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
 	free(line);
 
 	int loaded = 0;
 	struct clause clause = {NULL, 0};
-	while (loaded < length) {
+	while (loaded < solver->problem_len) {
 		value value = 0;
 		fscanf(file, "%d", &value);
 		if (value == 0) {
@@ -359,21 +365,21 @@ void preprocess(struct solver* solver) {
 
 				// TODO: (X | Y) & (X | -Y) -> X = failed literal probing (how?)
 				// TODO: subsumed clauses? (X) & (X|Y) -> X = occurence list, for each clause check var with shortest occ list, check only longer clauses
-				// TODO: bounded variable elimination
+				// TODO: bounded variable elimination - how to reconstruct model?
 			   )
 		  );
 	printf("after %d\n", solver->problem.length);
-	printf("variables %d\n", solver->len_variables+1);
+	printf("variables %d\n", solver->len_variables);
 }
 
 int unit_propagate(struct solver* solver) {
 	while (solver->queue < solver->trail.length) {
 		value check = solver->trail.values[solver->queue++];
-		struct clause clauses_i = solver->watched_clauses[check<0].clauses[abs(check)];
-		struct clause to_remove = {NULL, 0};
+		struct clause* clauses_i = &solver->watched_clauses[check<0].clauses[abs(check)];
+		int left, right;
 
-		for (int var_i = 0; var_i < clauses_i.length; var_i++) {
-			int clause_i = clauses_i.values[var_i];
+		for (left = right = 0; right < clauses_i->length;) {
+			int clause_i = clauses_i->values[right];
 			struct clause clause = solver->problem.clauses[clause_i];
 
 			// make sure the literal is in [1]
@@ -381,16 +387,19 @@ int unit_propagate(struct solver* solver) {
 				clause.values[0] = clause.values[1];
 				clause.values[1] = -check;
 			}
+			right++;
 
 			// first is true, can skip
 			value first = clause.values[0];
-			if (solver->variables[abs(first)] == get_vbool(first)) continue;
+			if (solver->variables[abs(first)] == get_vbool(first)) {
+				clauses_i->values[left++] = clause_i;
+				continue;
+			}
 
 			// look for a new watched literal
 			for (int i = 2; i < clause.length; i++) {
 				value v = clause.values[i];
 				if (solver->variables[abs(v)] != get_vbool(-v)) {
-					extend_clause(&to_remove, var_i);
 					clause.values[1] = v;
 					clause.values[i] = -check;
 					extend_clause(&solver->watched_clauses[v>0].clauses[abs(v)], clause_i);
@@ -399,23 +408,18 @@ int unit_propagate(struct solver* solver) {
 			}
 
 			// couldnt find any, is unit
+			clauses_i->values[left++] = clause_i;
 			if (solver->variables[abs(clause.values[0])] != vundef) {
-				for (int i = to_remove.length-1; i >= 0; i--) {
-					int rem = to_remove.values[i];
-					remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
-				}
-				free(to_remove.values);
+				while (right < clauses_i->length)
+					clauses_i->values[left++] = clauses_i->values[right++];
+				reduce_clause(clauses_i, right-left);
 				return clause_i;
 			} else {
 				assign(solver, first, clause_i);
 			}
 unit_propagate_next:;
 		}
-		for (int i = to_remove.length-1; i >= 0; i--) {
-			int rem = to_remove.values[i];
-			remove_clause_unord(&solver->watched_clauses[check<0].clauses[abs(check)], rem);
-		}
-		free(to_remove.values);
+		reduce_clause(clauses_i, right-left);
 	}
 
 	return -1;
@@ -465,12 +469,12 @@ void assign_guess(struct solver* solver, value guess) {
 
 void undo_decision(struct solver* solver) {
 	int index = solver->decisions.values[solver->decisions.length-1];
-	remove_clause_unord(&solver->decisions, solver->decisions.length-1);
+	reduce_clause(&solver->decisions, 1);
 
 	while (solver->trail.length > index) {
 		value val = solver->trail.values[solver->trail.length-1];
 		solver->variables[abs(val)] = vundef;
-		remove_clause_unord(&solver->trail, solver->trail.length-1);
+		reduce_clause(&solver->trail, 1);
 	}
 }
 
@@ -497,7 +501,6 @@ void init_two_watched(struct solver* solver) {
 }
 
 int backtrack_level(struct solver* solver, struct clause new) {
-	if (new.length == 1) return 0;
 	int highest = 0;
 	int second = 0;
 	for (int i = 0; i < new.length; i++) {
@@ -633,28 +636,31 @@ void probe(struct solver* solver) {
 int luby(int i) {
 	int k;
 	if (__builtin_popcount(i+1) == 1)
-		for (k = 1; k < 32; k++)
-			if (i == (1 << k) - 1)
-				return 1 << (k - 1);
+		return 1 << (__builtin_popcount(i)-1);
 	for (k = 1;; k++)
 		if ((1 << (k - 1)) <= i && i < (1 << k) - 1)
 			return luby (i - (1 << (k-1)) + 1);
 }
 
+void restart(struct solver* solver) {
+	printf("r");
+	fflush(stdout);
+	solver->conflicts_until_restart = luby(++solver->restarts)*LUBY_MULT;
+	while (solver->decisions.length > 0) undo_decision(solver);
+	solver->queue = solver->trail.length;
+}
+
 struct solver* cdcl(struct solver* solver) {
 	// TODO: clean up goto
-	if (solver->solved) return solver;
-
 	init_two_watched(solver);
-	probe(solver);
-
 	init_vsids(solver);
 
 	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1) {
+			// TODO: simplify this into a function call?
 
-			if (++solver->conflicts%solver->len_variables == 0) {
+			if (++solver->conflicts%LUBY_MULT == 0) {
 				printf(".");
 				// printf("%d\n", solver->problem.length);
 				fflush(stdout);
@@ -676,15 +682,8 @@ struct solver* cdcl(struct solver* solver) {
 			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
 			else extend_clauses(&solver->problem, new);
 
-			if (--solver->conflicts_until_restart == 0) {
-				printf("r");
-				fflush(stdout);
-				solver->conflicts_until_restart = luby(++solver->restarts)*LUBY_MULT;
-				while (solver->decisions.length > 0) undo_decision(solver);
-				solver->queue = solver->trail.length;
-			} else {
-				backtrack_learnt(solver, new);
-			}
+			if (--solver->conflicts_until_restart == 0) restart(solver);
+			else backtrack_learnt(solver, new);
 		}
 
 		if (solver->trail.length == solver->len_variables) sat(solver);
@@ -695,6 +694,7 @@ cdcl_end:
 }
 
 struct solver* solve(FILE* file) {
+
 	struct solver* solver = malloc(sizeof(struct solver));
 
 	struct clause  nilclause  = {NULL, 0};
@@ -717,6 +717,7 @@ struct solver* solve(FILE* file) {
 	solver->minimized			= 0;
 	solver->vsids				= NULL;
 	solver->phase				= NULL;
+	solver->problem_len			= 0;
 
 	solver->restarts				= 0;
 	solver->conflicts_until_restart	= LUBY_MULT;

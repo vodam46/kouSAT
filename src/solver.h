@@ -33,6 +33,7 @@ struct solver {
 
 	int minimized;
 
+	int problem_len;
 	struct clauses problem;
 	struct clause units;
 	// TODO: implications?
@@ -49,6 +50,7 @@ struct solver {
 	// for each literal, a list of clauses
 	// the watched literals are always in [0] and [1] in the clause
 	// [0] is false, [1] is true
+	// TODO: dont store redundant information (reduce this to struct clause[2]*)
 	struct clauses watched_clauses[2];
 
 	// index into trail of literals that need to be checked
