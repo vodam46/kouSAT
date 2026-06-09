@@ -11,13 +11,13 @@ FILE=
 
 sources = main.c solver.c test.c
 
-.PHONY: clean count debug debug-build default run
+.PHONY: clean count debug debug-build default run valgrind
 
 default: $(OUT)
 build: $(OUT)
 
 clean:
-	-rm -Rf obj dep bin valgrind profile.txt gmon.out
+	-rm -Rf obj dep bin valgrind* profile.txt gmon.out
 
 run: $(OUT)
 	time ./$(OUT) $(FILE)
@@ -59,8 +59,8 @@ profile: debug-build
 	gprof $(OUT_DEBUG) > profile.txt
 	less profile.txt
 
-valgrind: debug-build
-	valgrind --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT_DEBUG) $(FILE)
+valgrind: $(OUT)
+	valgrind --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
 
 count:
 	cloc src/*

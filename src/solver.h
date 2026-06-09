@@ -59,6 +59,8 @@ struct solver {
 	struct clause trail;
 
 	struct clause decisions;
+
+	struct clauses preprocessing_stack;
 };
 
 struct solver* solve(FILE*);
