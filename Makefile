@@ -11,7 +11,7 @@ FILE=
 
 sources = main.c solver.c test.c
 
-.PHONY: clean count debug debug-build default run valgrind
+.PHONY: clean count debug debug-build default run valgrind test
 
 default: $(OUT)
 build: $(OUT)

@@ -7,10 +7,14 @@ fix the top level architecture, its a mess
 	generalize/modularize parts of the code, to be easily replaceable
 
 
-IMPORTANT
-optimize preprocessing - dont recalculate occurence lists
+
+read through the profiler, dont just run the program for no reason
 
 
+more tests?
+	list of directories
+	call an advanced solver for the result
+	timeouts!!!
 
 
 better file structure?

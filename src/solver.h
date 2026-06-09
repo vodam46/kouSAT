@@ -31,7 +31,11 @@ struct solver {
 	int restarts;
 	int conflicts_until_restart;
 
+	// statistics
 	int minimized;
+	int clauses_removed;
+	int clauses_reduced;
+	int variables_eliminated;
 
 	int problem_len;
 	struct clauses problem;
