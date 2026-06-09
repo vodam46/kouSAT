@@ -53,12 +53,12 @@ void print_variables(struct solver* solver) {
 }
 
 void print_watched(struct solver* solver) {
-	if (solver->watched_clauses[0].clauses == NULL) return;
+	if (solver->watched_clauses[0] == NULL) return;
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		printf("-%d = ", i);
-		print_clause(solver->watched_clauses[0].clauses[i]);
+		print_clause(solver->watched_clauses[0][i]);
 		printf("%d = ", i);
-		print_clause(solver->watched_clauses[1].clauses[i]);
+		print_clause(solver->watched_clauses[1][i]);
 	}
 }
 
@@ -123,10 +123,10 @@ void destroy_solver(struct solver* solver) {
 	free(solver->reason);
 	free(solver->level);
 	for (int b = 0; b < 2; b++) {
-		if (solver->watched_clauses[b].clauses == NULL) continue;
+		if (solver->watched_clauses[b] == NULL) continue;
 		for (int i = 1; i < solver->len_variables+1; i++)
-			free(solver->watched_clauses[b].clauses[i].values);
-		free(solver->watched_clauses[b].clauses);
+			free(solver->watched_clauses[b][i].values);
+		free(solver->watched_clauses[b]);
 	}
 	free(solver->trail.values);
 	free(solver->decisions.values);
@@ -661,7 +661,7 @@ void preprocess(struct solver* solver) {
 int unit_propagate(struct solver* solver) {
 	while (solver->queue < solver->trail.length) {
 		value check = solver->trail.values[solver->queue++];
-		struct clause* clauses_i = &solver->watched_clauses[check<0].clauses[abs(check)];
+		struct clause* clauses_i = &solver->watched_clauses[check<0][abs(check)];
 		int left, right;
 
 		for (left = right = 0; right < clauses_i->length;) {
@@ -688,7 +688,7 @@ int unit_propagate(struct solver* solver) {
 				if (solver->variables[abs(v)] != get_vbool(-v)) {
 					clause.values[1] = v;
 					clause.values[i] = -check;
-					extend_clause(&solver->watched_clauses[v>0].clauses[abs(v)], clause_i);
+					extend_clause(&solver->watched_clauses[v>0][abs(v)], clause_i);
 					goto unit_propagate_next;
 				}
 			}
@@ -768,16 +768,15 @@ void add_watched_clause(struct solver* solver, int index) {
 	struct clause clause = solver->problem.clauses[index];
 	for (int j = 0; j < 2; j++) {
 		value v = clause.values[j];
-		extend_clause(&solver->watched_clauses[v>0].clauses[abs(v)], index);
+		extend_clause(&solver->watched_clauses[v>0][abs(v)], index);
 	}
 }
 
 void init_two_watched(struct solver* solver) {
 	for (int i = 0; i < 2; i++){
-		solver->watched_clauses[i].clauses = malloc((solver->len_variables+1) * sizeof(struct clause));
-		solver->watched_clauses[i].length = solver->len_variables+1;
+		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct clause));
 		for (int j = 0; j < solver->len_variables+1; j++) {
-			solver->watched_clauses[i].clauses[j] = (struct clause){NULL, 0};
+			solver->watched_clauses[i][j] = (struct clause){NULL, 0};
 		}
 	}
 
@@ -980,8 +979,8 @@ struct solver* solve(FILE* file) {
 	solver->len_variables		= 0;
 	solver->reason				= NULL;
 	solver->level				= NULL;
-	solver->watched_clauses[0]	= nilclauses;
-	solver->watched_clauses[1] 	= nilclauses;
+	solver->watched_clauses[0]	= NULL;
+	solver->watched_clauses[1] 	= NULL;
 	solver->queue				= 0;
 	solver->trail				= nilclause;
 	solver->decisions			= nilclause;
