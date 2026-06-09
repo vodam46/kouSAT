@@ -36,7 +36,7 @@ struct solver {
 	int problem_len;
 	struct clauses problem;
 	struct clause units;
-	// TODO: implications?
+	// TODO: binary clauses - built into the watched list?
 
 	double* vsids;
 	double vsids_factor;

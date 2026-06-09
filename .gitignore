@@ -2,3 +2,4 @@ bin
 dep
 obj
 gmon.out
+valgrind

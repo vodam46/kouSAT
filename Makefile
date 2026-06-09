@@ -60,7 +60,7 @@ profile: debug-build
 	less profile.txt
 
 valgrind: $(OUT)
-	valgrind --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
+	valgrind -s --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
 
 count:
 	cloc src/*
