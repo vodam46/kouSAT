@@ -390,7 +390,7 @@ bool preprocess_unit_propagate(struct solver* solver, struct clause** occurs) {
 
 	for (int unit_i = 0; unit_i < solver->units.length; unit_i++) {
 		value v = solver->units.values[unit_i];
-		if (solver->variables[abs(v)] != vundef) continue;
+		if (occurs[0][abs(v)].length == 0 && occurs[1][abs(v)].length == 0) continue;
 		for (int i = 0; i < occurs[v<0][abs(v)].length; i++) {
 			int index = occurs[v<0][abs(v)].values[i];
 			solver->clauses_reduced++;
@@ -461,7 +461,7 @@ bool preprocess_subsume_clauses(struct solver* solver, struct clause** occurs) {
 		int count = INT_MAX;
 		for (int i = 0; i < clause.length; i++) {
 			value l = clause.values[i];
-			if (occurs[l>0][abs(i)].length < count) {
+			if (occurs[l>0][abs(l)].length < count) {
 				lit = l;
 				count = occurs[l>0][abs(i)].length;
 			}
@@ -511,68 +511,20 @@ bool maybe_eliminate(
 	struct clauses pos = {NULL, 0};
 	struct clauses neg = {NULL, 0};
 
-	int p = occurs_pos->length-1;
-	int n = occurs_neg->length-1;
-	// TODO: fix this whole thing
-	while (p >= 0 && n >= 0) {
-		int index;
-		struct clauses* list;
-		if (occurs_pos->values[p] > occurs_neg->values[n]) {
-			index = occurs_pos->values[p--];
-			list = &pos;
-		} else {
-			index = occurs_neg->values[n--];
-			list = &neg;
-		}
-
+	while (occurs_pos->length) {
 		struct clause clause;
+		int index = occurs_pos->values[0];
 		copy_clause(&clause, solver->problem.clauses[index]);
-		remove_clause_occurence(solver, occurs, index);
-		extend_clauses(list, clause);
-		for (int i = 0; i < clause.length; i++) {
-			if (abs(clause.values[i]) == abs(var)) {
-				value t = clause.values[i];
-				clause.values[i] = clause.values[0];
-				clause.values[0] = t;
-				break;
-			}
-		}
-		extend_clauses(&solver->preprocessing_stack, clause);
-	}
-
-	while (p >= 0) {
-		struct clause clause;
-		copy_clause(&clause, solver->problem.clauses[occurs_pos->values[p]]);
-		remove_clause_occurence(solver, occurs, occurs_pos->values[p]);
 		extend_clauses(&pos, clause);
-		for (int i = 0; i < clause.length; i++) {
-			if (abs(clause.values[i]) == abs(var)) {
-				value t = clause.values[i];
-				clause.values[i] = clause.values[0];
-				clause.values[0] = t;
-				break;
-			}
-		}
-		extend_clauses(&solver->preprocessing_stack, clause);
-		p--;
+		remove_clause_occurence(solver, occurs, index);
 	}
-	while (n >= 0) {
+	while (occurs_neg->length) {
 		struct clause clause;
-		copy_clause(&clause, solver->problem.clauses[occurs_neg->values[n]]);
-		remove_clause_occurence(solver, occurs, occurs_neg->values[n]);
+		int index = occurs_neg->values[0];
+		copy_clause(&clause, solver->problem.clauses[index]);
 		extend_clauses(&neg, clause);
-		for (int i = 0; i < clause.length; i++) {
-			if (abs(clause.values[i]) == abs(var)) {
-				value t = clause.values[i];
-				clause.values[i] = clause.values[0];
-				clause.values[0] = t;
-				break;
-			}
-		}
-		extend_clauses(&solver->preprocessing_stack, clause);
-		n--;
+		remove_clause_occurence(solver, occurs, index);
 	}
-
 
 	for (int p = 0; p < pos.length; p++) {
 		struct clause pc = pos.clauses[p];
@@ -598,8 +550,7 @@ bool maybe_eliminate(
 					unsat(solver);
 					goto variable_elim_end;
 				}
-			}
-			else {
+			} else {
 				add_occurence(nc, solver->problem.length, occurs);
 				extend_clauses(&solver->problem, nc);
 			}
