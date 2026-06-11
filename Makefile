@@ -11,7 +11,7 @@ FILE=
 
 sources = main.c solver.c test.c
 
-.PHONY: clean count debug debug-build default run valgrind test
+.PHONY: clean count debug debug-build default run valgrind test check
 
 default: $(OUT)
 build: $(OUT)
@@ -22,6 +22,8 @@ clean:
 run: $(OUT)
 	time ./$(OUT) $(FILE)
 
+check: $(OUT)
+	./$(OUT) $(FILE) | grep '^v ' | luajit check_result.lua $(FILE)
 
 
 debug-build: CFLAGS := $(filter-out -O3,$(VAR))
@@ -68,6 +70,7 @@ count:
 test: CFLAGS+=-DTEST
 test: OUT=$(OUT_TEST)
 test: $(OUT)
+test:
 	time ./$(OUT)
 
 ifeq (,$(filter $(MAKECMDGOALS), clean count test))

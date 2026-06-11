@@ -27,6 +27,8 @@ more preprocessing
 bve - sort by occurs(pos) * occurs(neg)
 	- https://www.msoos.org/2013/04/a-variable-elimination-improvement/
 	- more lenient - not just strictly less clauses
+		- figure out some sort of heuristic
+	- how to check that the solution is actually correct?
 
 allsat - as an argument, and parameter of the solver?
 
@@ -74,3 +76,8 @@ http://www.satlive.org/
 two watched literals - special watcher struct (store the opposite literal)
 
 random (deterministic?) assignments
+
+when to schedule inprocessing?
+	- every restart? (too often?)
+	- when luby decreases?
+	- when too many clauses?
