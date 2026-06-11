@@ -81,3 +81,6 @@ when to schedule inprocessing?
 	- every restart? (too often?)
 	- when luby decreases?
 	- when too many clauses?
+
+internal test files?
+	git submodules?

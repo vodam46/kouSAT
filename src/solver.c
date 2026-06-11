@@ -9,6 +9,7 @@
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
+// TODO: unit_check function for preprocessing
 
 #include <limits.h>
 #include <stdio.h>
@@ -639,6 +640,48 @@ bool preprocess_variable_elimination(struct solver* solver, struct clause** occu
 	return change;
 }
 
+bool preprocess_self_subsume(struct solver* solver, struct clause** occurs) {
+	bool change = false;
+
+	for (int ci = 0; ci < solver->problem.length; ci++) {
+		struct clause clause = solver->problem.clauses[ci];
+		for (int pi = 0; pi < clause.length; pi++) {
+			value p = clause.values[pi];
+			clause.values[pi] = -p;
+
+			struct clause* occur = &occurs[p<0][abs(p)];
+			for (int oi = occur->length-1; oi >= 0; oi--) {
+				int index = occur->values[oi];
+				struct clause* other = &solver->problem.clauses[index];
+				if (subsumes(clause, *other)) {
+					solver->clauses_reduced++;
+					remove_clause_value(other, -p);
+					remove_clause_value(occur, index);
+					change = true;
+					if (other->length == 0) {
+						unsat(solver);
+						return true;
+					}
+					if (other->length == 1) {
+						value unit = other->values[0];
+						if (solver->variables[abs(unit)] == vundef) {
+							assign(solver, unit, -1);
+							extend_clause(&solver->units, unit);
+						} else if (solver->variables[abs(unit)] == get_vbool(-unit)) {
+							unsat(solver);
+							return true;
+						}
+					}
+				}
+			}
+
+			clause.values[pi] = p;
+		}
+	}
+
+	return change;
+}
+
 void preprocess(struct solver* solver) {
 	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
 	solver->level = malloc((solver->len_variables+1) * sizeof(int));
@@ -669,13 +712,10 @@ void preprocess(struct solver* solver) {
 				preprocess_unit_propagate(solver, occurs)
 				|| preprocess_pure_literals(solver, occurs)
 
-				// TODO: (X | Y) & (X | -Y) -> X = self subsumtion?
-
-				// TODO: subsumed clauses - optimize
+				// TODO: optimize
 				|| preprocess_subsume_clauses(solver, occurs)
-
-				// TODO: bounded variable elimination - OPTIMIZE
 				|| preprocess_variable_elimination(solver, occurs)
+				|| preprocess_self_subsume(solver, occurs)
 			   )
 		  );
 
