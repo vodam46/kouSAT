@@ -7,6 +7,24 @@
 #include "preprocess.h"
 #include "occurs.h"
 
+bool unit_check(struct solver* solver, struct clause clause) {
+	if (clause.length > 1) return false;
+	if (clause.length == 0) {
+		// TODO: isnt needed, but i dont want to remove this
+		unsat(solver);
+		return true;
+	}
+	value v = clause.values[0];
+	if (solver->variables[abs(v)] == vundef) {
+		extend_clause(&solver->units, v);
+		assign(solver, v, -1);
+		return false;
+	}
+	if (solver->variables[abs(v)] == get_vbool(v)) return false;
+	unsat(solver);
+	return true;
+}
+
 bool preprocess_unit_propagate(struct solver* solver, struct clause** occurs) {
 	// printf("preprocess unit propagation\n");
 	bool change = false;
@@ -18,21 +36,7 @@ bool preprocess_unit_propagate(struct solver* solver, struct clause** occurs) {
 			int index = occurs[v<0][abs(v)].values[i];
 			solver->clauses_reduced++;
 			remove_clause_value(&solver->problem.clauses[index], -v);
-			if (solver->problem.clauses[index].length == 1) {
-				value v = solver->problem.clauses[index].values[0];
-				if (solver->variables[abs(v)] == get_vbool(-v)) {
-					unsat(solver);
-					return true;
-				}
-				if (solver->variables[abs(v)] == vundef) {
-					extend_clause(&solver->units, v);
-					assign(solver, v, -1);
-				}
-			}
-			if (solver->problem.clauses[index].length == 0) {
-				unsat(solver);
-				return true;
-			}
+			if (unit_check(solver, solver->problem.clauses[index])) return true;
 		}
 
 		while (occurs[v>0][abs(v)].length) {
@@ -188,17 +192,13 @@ variable_eliminate:;
 				break;
 			}
 			if (nc.length == 1) {
-				value unit = nc.values[0];
-				free(nc.values);
-				if (solver->variables[abs(unit)] == vundef) {
-					assign(solver, unit, -1);
-					extend_clause(&solver->units, unit);
-				} else if (solver->variables[abs(unit)] != get_vbool(unit)) {
-					unsat(solver);
+				if (unit_check(solver, nc)) {
+					free(nc.values);
 					free(neg.clauses);
 					free(pos.clauses);
 					return true;
 				}
+				free(nc.values);
 			} else {
 				add_occurence(nc, solver->problem.length, occurs);
 				extend_clauses(&solver->problem, nc);
@@ -264,7 +264,7 @@ bool preprocess_self_subsume(struct solver* solver, struct clause** occurs) {
 		if (clause.length > 10) continue;
 
 		value lit = 0;
-		value other;
+		value other = 0;
 		int count = INT_MAX;
 		for (int i = 0; i < clause.length; i++) {
 			value l = clause.values[i];
@@ -298,16 +298,7 @@ bool preprocess_self_subsume(struct solver* solver, struct clause** occurs) {
 						unsat(solver);
 						return true;
 					}
-					if (other->length == 1) {
-						value unit = other->values[0];
-						if (solver->variables[abs(unit)] == vundef) {
-							assign(solver, unit, -1);
-							extend_clause(&solver->units, unit);
-						} else if (solver->variables[abs(unit)] == get_vbool(-unit)) {
-							unsat(solver);
-							return true;
-						}
-					}
+					if (unit_check(solver, *other)) return true;
 				}
 			}
 

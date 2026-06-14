@@ -110,8 +110,10 @@ void resolve(struct clause* left, struct clause right, value literal) {
 
 void remove_clause_value(struct clause* clause, value value) {
 	for (int i = 0; i < clause->length; i++)
-		if (clause->values[i] == value)
-			return remove_clause_unord(clause, i);
+		if (clause->values[i] == value) {
+			remove_clause_unord(clause, i);
+			return;
+		}
 	// printf("clause does not contain %d\n", value);
 	// print_clause(*clause);
 }
