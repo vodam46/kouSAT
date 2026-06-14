@@ -311,13 +311,6 @@ bool preprocess_self_subsume(struct solver* solver, struct clause** occurs) {
 
 void preprocess(struct solver* solver) {
 	printf("preprocessing\n");
-	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
-	solver->level = malloc((solver->len_variables+1) * sizeof(int));
-	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
-	solver->reason = malloc((solver->len_variables+1) * sizeof(int));
-	solver->phase = malloc((solver->len_variables+1) * sizeof(bool));
-	memset(solver->phase, solver->len_variables+1, sizeof(bool));
-
 	for (int i = 0; i < solver->units.length; i++) {
 		value unit = solver->units.values[i];
 		int index = abs(unit);

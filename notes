@@ -86,3 +86,5 @@ disconnected components
 https://www.msoos.org/2011/01/on-the-new-watchlist-scheme/
 
 find some other blog about sat solving to take ideas from
+
+move *all* allocation to allocate_data

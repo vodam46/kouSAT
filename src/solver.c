@@ -2,12 +2,10 @@
 // TODO: check that everything is correct
 // TODO: probing -> some sort of way to do it alongside preprocessing
 // TODO: clause deleting
-// TODO: better separation of initialization and logic (preprocess)
 // TODO: specialized data structures, not just clause(s) for everything
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
-// TODO: unit_check function for preprocessing
 // TODO: speed up preprocessing, it seems like most of the time is spent in it
 
 #include <limits.h>
@@ -226,8 +224,6 @@ int unit_propagate(struct solver* solver) {
 				continue;
 			}
 
-			// TODO: prefer a true literal
-
 			// look for a new watched literal
 			int index = 0;
 			for (int i = 2; i < clause.length; i++) {
@@ -265,8 +261,6 @@ int unit_propagate(struct solver* solver) {
 
 void init_vsids(struct solver* solver) {
 	solver->vsids_factor = 0.95;
-	solver->vsids = malloc((solver->len_variables+1) * sizeof(double));
-	for (int i = 1; i < solver->len_variables+1; i++) solver->vsids[i] = 0;
 	for (int ci = 0; ci < solver->problem.length; ci++) {
 		struct clause c = solver->problem.clauses[ci];
 		for (int i = 0; i < c.length; i++) {
@@ -325,13 +319,6 @@ void add_watched_clause(struct solver* solver, int index) {
 }
 
 void init_two_watched(struct solver* solver) {
-	for (int i = 0; i < 2; i++){
-		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct clause));
-		for (int j = 0; j < solver->len_variables+1; j++) {
-			solver->watched_clauses[i][j] = (struct clause){NULL, 0};
-		}
-	}
-
 	for (int i = 0; i < solver->problem.length; i++) {
 		add_watched_clause(solver, i);
 	}
@@ -395,7 +382,6 @@ struct clause analyze(struct solver* solver, int conflict) {
 	// - if level == 0 -> can remove, ignore
 	// - if dependents (ignore/remove) -> can remove, ignore
 
-	// TODO: check if its actually faster
 	// TODO: dont allocate them all the time
 
 	bool* ignore = calloc(solver->len_variables+1, sizeof(bool));
@@ -471,7 +457,6 @@ void restart(struct solver* solver) {
 
 struct solver* cdcl(struct solver* solver) {
 	printf("searching\n");
-	// TODO: clean up goto
 	init_two_watched(solver);
 	init_vsids(solver);
 
@@ -479,6 +464,7 @@ struct solver* cdcl(struct solver* solver) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1) {
 			// TODO: simplify this into a function call?
+			// resolve_conflict()
 
 			if (++solver->conflicts%LUBY_MULT == 0) {
 				printf(".");
@@ -488,14 +474,14 @@ struct solver* cdcl(struct solver* solver) {
 
 			if (solver->decisions.length == 0) {
 				unsat(solver);
-				goto cdcl_end;
+				return solver;
 			}
 
 			struct clause new = analyze(solver, conflict);
 			if (new.length == 0) {
 				free(new.values);
 				unsat(solver);
-				goto cdcl_end;
+				return solver;
 			}
 
 			if (new.length > 1) update_vsids(solver, new);
@@ -515,8 +501,27 @@ struct solver* cdcl(struct solver* solver) {
 		if (solver->trail.length == solver->len_variables - solver->variables_eliminated) sat(solver);
 		else assign_guess(solver, guess(solver));
 	}
-cdcl_end:
 	return solver;
+}
+
+void allocate_data(struct solver* solver) {
+	printf("allocating data\n");
+	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
+	solver->level = malloc((solver->len_variables+1) * sizeof(int));
+	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
+	solver->reason = malloc((solver->len_variables+1) * sizeof(int));
+	solver->phase = malloc((solver->len_variables+1) * sizeof(bool));
+	memset(solver->phase, solver->len_variables+1, sizeof(bool));
+
+	for (int i = 0; i < 2; i++){
+		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct clause));
+		for (int j = 0; j < solver->len_variables+1; j++) {
+			solver->watched_clauses[i][j] = (struct clause){NULL, 0};
+		}
+	}
+
+	solver->vsids = malloc((solver->len_variables+1) * sizeof(double));
+	for (int i = 1; i < solver->len_variables+1; i++) solver->vsids[i] = 0;
 }
 
 struct solver* solve(FILE* file) {
@@ -554,6 +559,7 @@ struct solver* solve(FILE* file) {
 
 
 	parse(file, solver);
+	allocate_data(solver);
 	preprocess(solver);
 	if (solver->solved) return solver;
 	return cdcl(solver);
