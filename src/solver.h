@@ -3,23 +3,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-typedef int value;
-
-enum vbool {
-	vtrue,
-	vfalse,
-	vundef
-};
-
-struct clause {
-	value* values;
-	int length;
-};
-
-struct clauses {
-	struct clause* clauses;
-	int length;
-};
+#include "clause.h"
 
 struct solver {
 	bool solved;
@@ -68,3 +52,8 @@ struct solver {
 
 struct solver* solve(FILE*);
 void destroy_solver(struct solver*);
+
+void assign(struct solver*, value, int);
+
+void unsat(struct solver*);
+void sat(struct solver*);

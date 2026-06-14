@@ -150,7 +150,7 @@ char* sat_files[] = {
 	"../cnf/mass/qg1-07.cnf",
 	"../cnf/mass/qg1-08.cnf",
 	"../cnf/mass/qg2-07.cnf",
-	// "../cnf/mass/qg2-08.cnf",
+	"../cnf/mass/qg2-08.cnf",
 	"../cnf/mass/qg3-08.cnf",
 	"../cnf/mass/qg4-09.cnf",
 	"../cnf/mass/qg5-11.cnf",

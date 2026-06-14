@@ -1,15 +1,14 @@
 // TODO: all solutions, not just the first one it finds -> add negative of choices as new clause
 // TODO: check that everything is correct
 // TODO: probing -> some sort of way to do it alongside preprocessing
-// TODO: restarts
 // TODO: clause deleting
-// TODO: phase saving
 // TODO: better separation of initialization and logic (preprocess)
 // TODO: specialized data structures, not just clause(s) for everything
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
 // TODO: unit_check function for preprocessing
+// TODO: speed up preprocessing, it seems like most of the time is spent in it
 
 #include <limits.h>
 #include <stdio.h>
@@ -18,27 +17,11 @@
 #include <stdbool.h>
 
 #include "solver.h"
+#include "clause.h"
+#include "dimacs.h"
+#include "preprocess.h"
 
 #define LUBY_MULT (1<<7)
-
-enum vbool get_vbool(value v) {
-	return v>0 ? vtrue : vfalse;
-}
-
-void print_clause(struct clause clause) {
-	for (int i = 0; i < clause.length; i++) {
-		printf("%d ", clause.values[i]);
-	}
-	printf("\n");
-}
-
-void print_clauses(struct clauses clauses) {
-	for (int i = 0; i < clauses.length; i++) {
-		// if (clauses.clauses[i].length > 1) continue;
-		printf("[%d] ", i);
-		print_clause(clauses.clauses[i]);
-	}
-}
 
 void print_variables(struct solver* solver) {
 	if (solver->variables == NULL) {
@@ -209,90 +192,6 @@ void sat(struct solver* solver) {
 }
 
 
-// TODO: do it better - custom clause allocator?
-// arena style allocate?
-// instead of pointers store only indices of the start
-// proper dynamic array with resizing
-
-void extend_clause(struct clause* clause, value value) {
-	clause->length++;
-	clause->values = realloc(clause->values, clause->length * sizeof(value));
-	clause->values[clause->length-1] = value;
-}
-
-void remove_clause_unord(struct clause* clause, unsigned index) {
-	clause->length--;
-	clause->values[index] = clause->values[clause->length];
-	if (clause->length)
-		clause->values = realloc(clause->values, clause->length * sizeof(value));
-	else {
-		free(clause->values);
-		clause->values = NULL;
-	}
-}
-
-void reduce_clause(struct clause* clause, unsigned length) {
-	clause->length -= length;
-	if (clause->length)
-		clause->values = realloc(clause->values, clause->length * sizeof(int));
-	else {
-		free(clause->values);
-		clause->values = NULL;
-	}
-}
-
-void extend_clauses(struct clauses* clauses, struct clause clause) {
-	clauses->length++;
-	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
-	clauses->clauses[clauses->length-1] = clause;
-}
-
-void remove_clauses_unord(struct clauses* clauses, unsigned index) {
-	clauses->length--;
-	free(clauses->clauses[index].values);
-	clauses->clauses[index] = clauses->clauses[clauses->length];
-	if (clauses->length)
-		clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
-	else {
-		free(clauses->clauses);
-		clauses->clauses = NULL;
-	}
-}
-
-bool clause_contains(struct clause clause, value literal) {
-	for (int i = 0; i < clause.length; i++)
-		if (clause.values[i] == literal)
-			return true;
-	return false;
-}
-
-bool resolve_trivial(struct clause left, struct clause right, value v) {
-	for (int l = 0; l < left.length; l++) {
-		if (abs(left.values[l]) == abs(v)) continue;
-		for (int r = 0; r < right.length; r++)
-			if (left.values[l] == -right.values[r])
-				return true;
-
-	}
-	return false;
-}
-void resolve(struct clause* left, struct clause right, value literal) {
-	for (int i = 0; i < left->length; i++) {
-		if (left->values[i] == -literal) {
-			remove_clause_unord(left, i);
-			break;
-		}
-	}
-
-	for (int i = 0; i < right.length; i++) {
-		value l = right.values[i];
-		if (l != literal && !clause_contains(*left, l)) {
-			extend_clause(left, l);
-		}
-	}
-}
-
-
 void assign(struct solver* solver, value value, int reason) {
 	int index = abs(value);
 	enum vbool val = get_vbool(value);
@@ -301,434 +200,6 @@ void assign(struct solver* solver, value value, int reason) {
 	solver->reason[index] = reason;
 	solver->phase[index] = val == vfalse ? false : true;
 	extend_clause(&solver->trail, value);
-}
-
-void parse(FILE* file, struct solver* solver) {
-	// TODO: make this different?
-	char* line = NULL;
-	size_t size = 0;
-	getline(&line, &size, file);
-	while (line[0] != 'p') {
-		getline(&line, &size, file);
-	}
-
-	if (strncmp(line, "p cnf ", 6)) {
-		printf("invalid problem line\n\"%s\"", line);
-		exit(1);
-	}
-	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
-	free(line);
-
-	int loaded = 0;
-	bool ignore = false;
-	struct clause clause = {NULL, 0};
-	while (loaded < solver->problem_len) {
-		value value = 0;
-		fscanf(file, "%d", &value);
-		if (value == 0) {
-			if (!ignore) {
-				if (clause.length == 1) {
-					extend_clause(&solver->units, clause.values[0]);
-					free(clause.values);
-				} else extend_clauses(&solver->problem, clause);
-			}
-
-			ignore = false;
-			clause = (struct clause){NULL, 0};
-			loaded++;
-		} else {
-			if (clause_contains(clause, value)) continue;
-			if (clause_contains(clause, -value)) ignore = true;
-			extend_clause(&clause, value);
-		}
-	}
-
-	fclose(file);
-}
-
-void add_occurence(struct clause clause, int index, struct clause** occurs) {
-	for (int var_i = 0; var_i < clause.length; var_i++) {
-		value var = clause.values[var_i];
-		extend_clause(&occurs[var>0][abs(var)], index);
-	}
-}
-
-struct clause** build_occurence_list(struct solver* solver) {
-	struct clause** occurs;
-	occurs = malloc(2*sizeof(struct clause*));
-
-	occurs[0] = malloc((solver->len_variables+1)*sizeof(struct clause));
-	occurs[1] = malloc((solver->len_variables+1)*sizeof(struct clause));
-	for (int i = 0; i < solver->len_variables+1; i++)
-		for (int p = 0; p < 2; p++)
-			occurs[p][i] = (struct clause){NULL, 0};
-
-	for (int clause_i = 0; clause_i < solver->problem.length; clause_i++)
-		add_occurence(solver->problem.clauses[clause_i], clause_i, occurs);
-
-
-	return occurs;
-}
-
-void remove_clause_value(struct clause* clause, value value) {
-	for (int i = 0; i < clause->length; i++)
-		if (clause->values[i] == value)
-			return remove_clause_unord(clause, i);
-	// printf("clause does not contain %d\n", value);
-	// print_clause(*clause);
-}
-
-void delete_occurence(struct solver* solver, struct clause** occurs, int index) {
-	struct clause clause = solver->problem.clauses[index];
-	for (int i = 0; i < clause.length; i++) {
-		value v = clause.values[i];
-		remove_clause_value(&occurs[v>0][abs(v)], index);
-	}
-}
-
-void remove_clause_occurence(struct solver* solver, struct clause** occurs, int index) {
-	delete_occurence(solver, occurs, index);
-	if (index != solver->problem.length-1) {
-		delete_occurence(solver, occurs, solver->problem.length-1);
-		remove_clauses_unord(&solver->problem, index);
-		add_occurence(solver->problem.clauses[index], index, occurs);
-	} else {
-		remove_clauses_unord(&solver->problem, index);
-	}
-}
-
-bool preprocess_unit_propagate(struct solver* solver, struct clause** occurs) {
-	// printf("preprocess unit propagation\n");
-	bool change = false;
-
-	for (int unit_i = 0; unit_i < solver->units.length; unit_i++) {
-		value v = solver->units.values[unit_i];
-		if (occurs[0][abs(v)].length == 0 && occurs[1][abs(v)].length == 0) continue;
-		for (int i = 0; i < occurs[v<0][abs(v)].length; i++) {
-			int index = occurs[v<0][abs(v)].values[i];
-			solver->clauses_reduced++;
-			remove_clause_value(&solver->problem.clauses[index], -v);
-			if (solver->problem.clauses[index].length == 1) {
-				value v = solver->problem.clauses[index].values[0];
-				if (solver->variables[abs(v)] == get_vbool(-v)) {
-					unsat(solver);
-					return true;
-				}
-				if (solver->variables[abs(v)] == vundef) {
-					extend_clause(&solver->units, v);
-					assign(solver, v, -1);
-				}
-			}
-			if (solver->problem.clauses[index].length == 0) {
-				unsat(solver);
-				return true;
-			}
-		}
-
-		while (occurs[v>0][abs(v)].length) {
-			solver->clauses_removed++;
-			remove_clause_occurence(solver, occurs, occurs[v>0][abs(v)].values[0]);
-		}
-
-		for (int b = 0; b < 2; b++) {
-			free(occurs[b][abs(v)].values);
-			occurs[b][abs(v)].values = NULL;
-			occurs[b][abs(v)].length = 0;
-		}
-	}
-
-	return change;
-}
-
-bool preprocess_pure_literals(struct solver* solver, struct clause** occurs) {
-	// printf("preprocess pure literals\n");
-	bool change = false;
-
-	for (int i = 1; i < solver->len_variables+1; i++) {
-		if (solver->variables[i] != vundef) continue;
-		if (occurs[0][i].length == 0 && occurs[1][i].length >= 1) {
-			// printf("pure %d\n", i);
-			assign(solver, i, -1);
-			extend_clause(&solver->units, i);
-			change = true;
-		}
-		if (occurs[0][i].length >= 1 && occurs[1][i].length == 0) {
-			// printf("pure %d\n", -i);
-			assign(solver, -i, -1);
-			extend_clause(&solver->units, -i);
-			change = true;
-		}
-	}
-
-	return change;
-}
-
-bool subsumes(struct clause left, struct clause right) {
-	if (left.length > right.length) return false;
-	for (int i = 0; i < left.length; i++)
-		if (!clause_contains(right, left.values[i]))
-			return false;
-	return true;
-}
-
-bool preprocess_subsume_clauses(struct solver* solver, struct clause** occurs) {
-	// printf("preprocess subsume clauses\n");
-	bool change = false;
-
-	for (int ci = 0; ci < solver->problem.length; ci++) {
-		struct clause clause = solver->problem.clauses[ci];
-		value lit = 0;
-		int count = INT_MAX;
-		for (int i = 0; i < clause.length; i++) {
-			value l = clause.values[i];
-			if (occurs[l>0][abs(l)].length < count) {
-				lit = l;
-				count = occurs[l>0][abs(i)].length;
-			}
-		}
-
-		struct clause* occ = &occurs[lit>0][abs(lit)];
-		for (int i = occ->length-1; i >= 0; i--) {
-			int index = occ->values[i];
-			struct clause other = solver->problem.clauses[index];
-			if (index == ci) continue;
-			if(subsumes(clause, other)) {
-				solver->clauses_removed++;
-				if (ci == solver->problem.length-1) ci = index;
-				remove_clause_occurence(solver, occurs, index);
-				change = true;
-			}
-		}
-	}
-
-	return change;
-}
-
-void copy_clause(struct clause* dest, struct clause orig) {
-	dest->length = orig.length;
-	dest->values = malloc(orig.length * sizeof(value));
-	memcpy(dest->values, orig.values, orig.length * sizeof(value));
-}
-bool maybe_eliminate(
-	struct solver* solver,
-	value var,
-	struct clause** occurs
-) {
-	struct clause* occurs_neg = &occurs[0][var];
-	struct clause* occurs_pos = &occurs[1][var];
-
-	if (occurs_neg->length > 2 || occurs_pos->length > 2) {
-		int count = 0;
-		for (int l = 0; l < occurs_neg->length; l++) {
-			struct clause left = solver->problem.clauses[occurs_neg->values[l]];
-			for (int r = 0; r < occurs_pos->length; r++) {
-				struct clause right = solver->problem.clauses[occurs_pos->values[r]];
-				if (!resolve_trivial(left, right, var))
-					count++;
-			}
-		}
-		int c = occurs_neg->length + occurs_pos->length;
-		if (count > (c + (c>>1) + 1)) return false;
-	}
-
-
-	struct clauses pos = {NULL, 0};
-	struct clauses neg = {NULL, 0};
-
-	while (occurs_pos->length) {
-		struct clause clause;
-		int index = occurs_pos->values[0];
-		copy_clause(&clause, solver->problem.clauses[index]);
-		extend_clauses(&pos, clause);
-		for (int i = 0; i < clause.length; i++) {
-			if (clause.values[i] == var) {
-				clause.values[i] = clause.values[0];
-				clause.values[0] = var;
-				break;
-			}
-		}
-		extend_clauses(&solver->preprocessing_stack, clause);
-		remove_clause_occurence(solver, occurs, index);
-	}
-	while (occurs_neg->length) {
-		struct clause clause;
-		int index = occurs_neg->values[0];
-		copy_clause(&clause, solver->problem.clauses[index]);
-		extend_clauses(&neg, clause);
-		for (int i = 0; i < clause.length; i++) {
-			if (clause.values[i] == -var) {
-				clause.values[i] = clause.values[0];
-				clause.values[0] = -var;
-				break;
-			}
-		}
-		extend_clauses(&solver->preprocessing_stack, clause);
-		remove_clause_occurence(solver, occurs, index);
-	}
-
-	for (int p = 0; p < pos.length; p++) {
-		struct clause pc = pos.clauses[p];
-		for (int n = 0; n < neg.length; n++) {
-			struct clause nc;
-			copy_clause(&nc, neg.clauses[n]);
-			if (resolve_trivial(pc, nc, var)) {
-				free(nc.values);
-				continue;
-			}
-			resolve(&nc, pc, var);
-			if (nc.length == 0) {
-				unsat(solver);
-				break;
-			}
-			if (nc.length == 1) {
-				value unit = nc.values[0];
-				free(nc.values);
-				if (solver->variables[abs(unit)] == vundef) {
-					assign(solver, unit, -1);
-					extend_clause(&solver->units, unit);
-				} else if (solver->variables[abs(unit)] != get_vbool(unit)) {
-					unsat(solver);
-					goto variable_elim_end;
-				}
-			} else {
-				add_occurence(nc, solver->problem.length, occurs);
-				extend_clauses(&solver->problem, nc);
-			}
-		}
-	}
-variable_elim_end:
-
-	free(neg.clauses);
-	free(pos.clauses);
-
-	return true;
-}
-
-int qsort_func(const void* l, const void* r) {
-	int res = ((int*)l)[1] - ((int*)r)[1];
-	return res != 0 ? res : ((int*)l)[0] - ((int*)r)[0];
-}
-bool preprocess_variable_elimination(struct solver* solver, struct clause** occurs) {
-	// printf("preprocess variable elimination\n");
-	bool change = false;
-
-	int skip = 0;
-	int* variables = malloc(solver->len_variables * sizeof(int)*2);
-	for (int i = 0; i < solver->len_variables; i++) {
-		if (solver->variables[i+1] != vundef) {
-			skip++;
-			continue;
-		}
-		variables[2*(i-skip)] = i+1;
-		variables[2*(i-skip)+1] = occurs[0][i+1].length * occurs[1][i+1].length;
-	}
-	qsort(variables, solver->len_variables-skip, sizeof(int)*2, qsort_func);
-
-	for (int i = 0; i < solver->len_variables-skip; i++) {
-		int var = variables[2*i];
-		if (solver->variables[var] != vundef) continue;
-		if (occurs[0][var].length == 0 || occurs[1][var].length == 0) continue;
-		if (occurs[0][var].length >= 10 && occurs[1][var].length >= 10) continue;
-		if (maybe_eliminate(solver, var, occurs)) {
-			solver->variables_eliminated++;
-			change = true;
-		}
-	}
-
-	free(variables);
-
-	return change;
-}
-
-bool preprocess_self_subsume(struct solver* solver, struct clause** occurs) {
-	bool change = false;
-
-	for (int ci = 0; ci < solver->problem.length; ci++) {
-		struct clause clause = solver->problem.clauses[ci];
-		for (int pi = 0; pi < clause.length; pi++) {
-			value p = clause.values[pi];
-			clause.values[pi] = -p;
-
-			struct clause* occur = &occurs[p<0][abs(p)];
-			for (int oi = occur->length-1; oi >= 0; oi--) {
-				int index = occur->values[oi];
-				struct clause* other = &solver->problem.clauses[index];
-				if (subsumes(clause, *other)) {
-					solver->clauses_reduced++;
-					remove_clause_value(other, -p);
-					remove_clause_value(occur, index);
-					change = true;
-					if (other->length == 0) {
-						unsat(solver);
-						return true;
-					}
-					if (other->length == 1) {
-						value unit = other->values[0];
-						if (solver->variables[abs(unit)] == vundef) {
-							assign(solver, unit, -1);
-							extend_clause(&solver->units, unit);
-						} else if (solver->variables[abs(unit)] == get_vbool(-unit)) {
-							unsat(solver);
-							return true;
-						}
-					}
-				}
-			}
-
-			clause.values[pi] = p;
-		}
-	}
-
-	return change;
-}
-
-void preprocess(struct solver* solver) {
-	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
-	solver->level = malloc((solver->len_variables+1) * sizeof(int));
-	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
-	solver->reason = malloc((solver->len_variables+1) * sizeof(int));
-	solver->phase = malloc((solver->len_variables+1) * sizeof(bool));
-	memset(solver->phase, solver->len_variables+1, sizeof(bool));
-
-	for (int i = 0; i < solver->units.length; i++) {
-		value unit = solver->units.values[i];
-		int index = abs(unit);
-		enum vbool v = get_vbool(unit);
-		if (solver->variables[index] == vundef) {
-			assign(solver, unit, -1);
-		} else if (solver->variables[index] != v) {
-			unsat(solver);
-			return;
-		}
-	}
-
-	// TODO: more preprocessing
-	// TODO: fix this loop -> dont run preprocessing that isnt needed
-	printf("before %d\n", solver->problem.length);
-	struct clause** occurs = build_occurence_list(solver);
-	while (
-			!solver->solved
-			&& (
-				preprocess_unit_propagate(solver, occurs)
-				|| preprocess_pure_literals(solver, occurs)
-
-				// TODO: optimize
-				|| preprocess_subsume_clauses(solver, occurs)
-				|| preprocess_variable_elimination(solver, occurs)
-				|| preprocess_self_subsume(solver, occurs)
-			   )
-		  );
-
-	for (int i = 1; i < solver->len_variables+1; i++) {
-		free(occurs[0][i].values);
-		free(occurs[1][i].values);
-	}
-	free(occurs[0]);
-	free(occurs[1]);
-	free(occurs);
-
-	printf("after %d\n", solver->problem.length);
-	printf("variables %d\n", solver->len_variables);
 }
 
 int unit_propagate(struct solver* solver) {
@@ -755,15 +226,24 @@ int unit_propagate(struct solver* solver) {
 				continue;
 			}
 
+			// TODO: prefer a true literal
+
 			// look for a new watched literal
+			int index = 0;
 			for (int i = 2; i < clause.length; i++) {
 				value v = clause.values[i];
-				if (solver->variables[abs(v)] != get_vbool(-v)) {
-					clause.values[1] = v;
-					clause.values[i] = -check;
-					extend_clause(&solver->watched_clauses[v>0][abs(v)], clause_i);
-					goto unit_propagate_next;
-				}
+				enum vbool val = solver->variables[abs(v)];
+
+				if (val == vundef) index = i;
+				else if (val == get_vbool(v)) { index = i; break; }
+			}
+
+			if (index) {
+				value v = clause.values[index];
+				clause.values[index] = clause.values[1];
+				clause.values[1] = v;
+				extend_clause(&solver->watched_clauses[v>0][abs(v)], clause_i);
+				continue;
 			}
 
 			// couldnt find any, is unit
@@ -776,7 +256,6 @@ int unit_propagate(struct solver* solver) {
 			} else {
 				assign(solver, first, clause_i);
 			}
-unit_propagate_next:;
 		}
 		reduce_clause(clauses_i, right-left);
 	}
@@ -785,7 +264,7 @@ unit_propagate_next:;
 }
 
 void init_vsids(struct solver* solver) {
-	solver->vsids_factor = 0.9;
+	solver->vsids_factor = 0.95;
 	solver->vsids = malloc((solver->len_variables+1) * sizeof(double));
 	for (int i = 1; i < solver->len_variables+1; i++) solver->vsids[i] = 0;
 	for (int ci = 0; ci < solver->problem.length; ci++) {
@@ -878,25 +357,12 @@ void backtrack_learnt(struct solver* solver, struct clause new) {
 	while (solver->decisions.length > level) undo_decision(solver);
 	solver->queue = solver->trail.length;
 
-	if (new.length == 1) {
-		assign(solver, new.values[0], -1);
-	} else {
-		// TODO: optimize
-
-		// put the unit in [0] and a current level literal in [1]
-		for (int i = 1; i < new.length; i++) {
-			value l = new.values[i];
-			if (solver->variables[abs(l)] == vundef) {
-				new.values[i] = new.values[0];
-				new.values[0] = l;
-			} else if (solver->level[abs(l)] > solver->level[abs(new.values[1])]) {
-				new.values[i] = new.values[1];
-				new.values[1] = l;
-			}
-		}
+	int reason = -1;
+	if (new.length != 1) {
 		add_watched_clause(solver, solver->problem.length-1);
-		assign(solver, new.values[0], solver->problem.length-1);
+		reason = solver->problem.length-1;
 	}
+	assign(solver, new.values[0], reason);
 }
 
 
@@ -965,6 +431,17 @@ struct clause analyze(struct solver* solver, int conflict) {
 	}
 	free(ignore);
 	free(remove);
+	// TODO: optimize
+	for (int i = 1; i < ret.length; i++) {
+		value l = ret.values[i];
+		if (solver->level[abs(l)] == solver->decisions.length) {
+			ret.values[i] = ret.values[0];
+			ret.values[0] = l;
+		} else if (solver->level[abs(l)] > solver->level[abs(ret.values[1])]) {
+			ret.values[i] = ret.values[1];
+			ret.values[1] = l;
+		}
+	}
 
 	return ret;
 }
@@ -993,6 +470,7 @@ void restart(struct solver* solver) {
 }
 
 struct solver* cdcl(struct solver* solver) {
+	printf("searching\n");
 	// TODO: clean up goto
 	init_two_watched(solver);
 	init_vsids(solver);
@@ -1020,13 +498,16 @@ struct solver* cdcl(struct solver* solver) {
 				goto cdcl_end;
 			}
 
-			update_vsids(solver, new);
+			if (new.length > 1) update_vsids(solver, new);
 
 			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
 			else extend_clauses(&solver->problem, new);
 
-			if (--solver->conflicts_until_restart == 0) restart(solver);
-			else backtrack_learnt(solver, new);
+			if (--solver->conflicts_until_restart == 0) {
+				restart(solver);
+				if (new.length == 1) assign(solver, new.values[0], -1);
+				else add_watched_clause(solver, solver->problem.length-1);
+			} else backtrack_learnt(solver, new);
 
 			if (new.length == 1) free(new.values);
 		}

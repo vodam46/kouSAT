@@ -17,10 +17,6 @@ more tests?
 	timeouts!!!
 
 
-better file structure?
-	split stuff into separate files
-		- clause.h, solver.h, preprocess.h, ...
-
 clear all the todos
 
 more preprocessing
@@ -28,7 +24,7 @@ bve - sort by occurs(pos) * occurs(neg)
 	- https://www.msoos.org/2013/04/a-variable-elimination-improvement/
 	- more lenient - not just strictly less clauses
 		- figure out some sort of heuristic
-	- how to check that the solution is actually correct?
+	- https://www.msoos.org/2014/04/why-its-hard-to-eliminate-variables/
 
 allsat - as an argument, and parameter of the solver?
 
@@ -39,8 +35,6 @@ read all the pdfs i downloaded on sat solving
 	!!! mark down all the interesting ideas in them
 
 separate solving and data structure init
-
-look into what opensat.org was? (mentioned in minisat paper)
 
 https://github.com/urbanophile/awesome-sat-solvers
 
@@ -82,5 +76,13 @@ when to schedule inprocessing?
 	- when luby decreases?
 	- when too many clauses?
 
-internal test files?
+internal test files? (keep in the git repo)
 	git submodules?
+
+multi threading?
+
+disconnected components
+
+https://www.msoos.org/2011/01/on-the-new-watchlist-scheme/
+
+find some other blog about sat solving to take ideas from

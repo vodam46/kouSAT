@@ -1,0 +1,51 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#include "dimacs.h"
+
+// TODO: make this different?
+// TODO: put some basic unit propagation in parsing
+void parse(FILE* file, struct solver* solver) {
+	printf("parsing\n");
+	char* line = NULL;
+	size_t size = 0;
+	getline(&line, &size, file);
+	while (line[0] != 'p') {
+		getline(&line, &size, file);
+	}
+
+	if (strncmp(line, "p cnf ", 6)) {
+		printf("invalid problem line\n\"%s\"", line);
+		exit(1);
+	}
+	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
+	free(line);
+
+	int loaded = 0;
+	bool ignore = false;
+	struct clause clause = {NULL, 0};
+	while (loaded < solver->problem_len) {
+		value value = 0;
+		fscanf(file, "%d", &value);
+		if (value == 0) {
+			if (!ignore) {
+				if (clause.length == 1) {
+					extend_clause(&solver->units, clause.values[0]);
+					free(clause.values);
+				} else extend_clauses(&solver->problem, clause);
+			}
+
+			ignore = false;
+			clause = (struct clause){NULL, 0};
+			loaded++;
+		} else {
+			if (clause_contains(clause, value)) continue;
+			if (clause_contains(clause, -value)) ignore = true;
+			extend_clause(&clause, value);
+		}
+	}
+
+	fclose(file);
+}
+

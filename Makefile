@@ -9,7 +9,7 @@ CLIBS=
 
 FILE=
 
-sources = main.c solver.c test.c
+sources = main.c solver.c test.c dimacs.c clause.c preprocess.c occurs.c
 
 .PHONY: clean count debug debug-build default run valgrind test check
 

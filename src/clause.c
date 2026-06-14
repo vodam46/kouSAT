@@ -1,0 +1,130 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "clause.h"
+
+enum vbool get_vbool(value v) {
+	return v>0 ? vtrue : vfalse;
+}
+
+void print_clause(struct clause clause) {
+	for (int i = 0; i < clause.length; i++) {
+		printf("%d ", clause.values[i]);
+	}
+	printf("\n");
+}
+
+void print_clauses(struct clauses clauses) {
+	for (int i = 0; i < clauses.length; i++) {
+		// if (clauses.clauses[i].length > 1) continue;
+		printf("[%d] ", i);
+		print_clause(clauses.clauses[i]);
+	}
+}
+
+
+// TODO: do it better - custom clause allocator?
+// arena style allocate?
+// instead of pointers store only indices of the start
+// proper dynamic array with resizing
+
+void extend_clause(struct clause* clause, value value) {
+	clause->length++;
+	clause->values = realloc(clause->values, clause->length * sizeof(value));
+	clause->values[clause->length-1] = value;
+}
+
+void remove_clause_unord(struct clause* clause, unsigned index) {
+	clause->length--;
+	clause->values[index] = clause->values[clause->length];
+	if (clause->length)
+		clause->values = realloc(clause->values, clause->length * sizeof(value));
+	else {
+		free(clause->values);
+		clause->values = NULL;
+	}
+}
+
+void reduce_clause(struct clause* clause, unsigned length) {
+	clause->length -= length;
+	if (clause->length)
+		clause->values = realloc(clause->values, clause->length * sizeof(int));
+	else {
+		free(clause->values);
+		clause->values = NULL;
+	}
+}
+
+void extend_clauses(struct clauses* clauses, struct clause clause) {
+	clauses->length++;
+	clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
+	clauses->clauses[clauses->length-1] = clause;
+}
+
+void remove_clauses_unord(struct clauses* clauses, unsigned index) {
+	clauses->length--;
+	free(clauses->clauses[index].values);
+	clauses->clauses[index] = clauses->clauses[clauses->length];
+	if (clauses->length)
+		clauses->clauses = realloc(clauses->clauses, clauses->length * sizeof(struct clause));
+	else {
+		free(clauses->clauses);
+		clauses->clauses = NULL;
+	}
+}
+
+bool clause_contains(struct clause clause, value literal) {
+	for (int i = 0; i < clause.length; i++)
+		if (clause.values[i] == literal)
+			return true;
+	return false;
+}
+
+bool resolve_trivial(struct clause left, struct clause right, value v) {
+	for (int l = 0; l < left.length; l++) {
+		if (abs(left.values[l]) == abs(v)) continue;
+		for (int r = 0; r < right.length; r++)
+			if (left.values[l] == -right.values[r])
+				return true;
+
+	}
+	return false;
+}
+void resolve(struct clause* left, struct clause right, value literal) {
+	for (int i = 0; i < left->length; i++) {
+		if (left->values[i] == -literal) {
+			remove_clause_unord(left, i);
+			break;
+		}
+	}
+
+	for (int i = 0; i < right.length; i++) {
+		value l = right.values[i];
+		if (l != literal && !clause_contains(*left, l)) {
+			extend_clause(left, l);
+		}
+	}
+}
+
+void remove_clause_value(struct clause* clause, value value) {
+	for (int i = 0; i < clause->length; i++)
+		if (clause->values[i] == value)
+			return remove_clause_unord(clause, i);
+	// printf("clause does not contain %d\n", value);
+	// print_clause(*clause);
+}
+
+bool subsumes(struct clause left, struct clause right) {
+	if (left.length > right.length) return false;
+	for (int i = 0; i < left.length; i++)
+		if (!clause_contains(right, left.values[i]))
+			return false;
+	return true;
+}
+void copy_clause(struct clause* dest, struct clause orig) {
+	dest->length = orig.length;
+	dest->values = malloc(orig.length * sizeof(value));
+	memcpy(dest->values, orig.values, orig.length * sizeof(value));
+}
