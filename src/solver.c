@@ -6,7 +6,6 @@
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
-// TODO: speed up preprocessing, it seems like most of the time is spent in it
 
 #include <limits.h>
 #include <stdio.h>

@@ -26,7 +26,7 @@ check: $(OUT)
 	./$(OUT) $(FILE) | grep '^v ' | luajit check_result.lua $(FILE)
 
 
-debug-build: CFLAGS := $(filter-out -O3,$(VAR))
+debug-build: CFLAGS := $(filter-out -O3,$(CFLAGS))
 
 debug-build: CFLAGS+=-g
 
@@ -61,6 +61,7 @@ profile: debug-build
 	gprof $(OUT_DEBUG) > profile.txt
 	less profile.txt
 
+valgrind: CFLAGS := $(filter-out -O3,$(CFLAGS))
 valgrind: $(OUT)
 	valgrind -s --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
 

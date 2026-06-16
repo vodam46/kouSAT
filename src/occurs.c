@@ -1,8 +1,19 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include "solver.h"
 #include "clause.h"
 #include "occurs.h"
+
+void free_occurs(struct solver* solver, struct clause** occurs) {
+	for (int i = 1; i < solver->len_variables+1; i++) {
+		free(occurs[0][i].values);
+		free(occurs[1][i].values);
+	}
+	free(occurs[0]);
+	free(occurs[1]);
+	free(occurs);
+}
 
 void add_occurence(struct clause clause, int index, struct clause** occurs) {
 	for (int var_i = 0; var_i < clause.length; var_i++) {
