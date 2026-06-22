@@ -7,6 +7,11 @@ fix the top level architecture, its a mess
 	generalize/modularize parts of the code, to be easily replaceable
 
 
+specialized data structures
+	- clause(s)
+	- watcher
+	- rename current clause struct to "int_arr"?
+
 
 read through the profiler, dont just run the program for no reason
 

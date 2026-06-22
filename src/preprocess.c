@@ -473,6 +473,7 @@ void preprocess(struct solver* solver) {
 				if (occurs[0][var].length > 50 && occurs[1][var].length > 50) continue;
 
 				if (maybe_eliminate(solver, var, occurs, touched, &added)) {
+					solver->variables[var] = vtrue;
 					solver->variables_eliminated++;
 					if (solver->solved) goto preprocess_end;
 					if (solver->problem.length == 0) {

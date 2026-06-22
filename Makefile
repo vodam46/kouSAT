@@ -64,7 +64,7 @@ profile: $(OUT)
 valgrind: CFLAGS := $(filter-out -O3,$(CFLAGS)) -Og
 valgrind: CFLAGS := $(filter-out -pg,$(CFLAGS))
 valgrind: $(OUT)
-	valgrind -s --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
+	time valgrind -s --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
 
 count:
 	cloc src/*

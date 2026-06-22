@@ -35,6 +35,10 @@ struct solver {
 	int* reason;
 	int* level;
 
+	// for minimizing
+	bool* ignore;
+	bool* remove;
+
 	// for each literal, a list of clauses
 	// the watched literals are always in [0] and [1] in the clause
 	// [0] is false, [1] is true

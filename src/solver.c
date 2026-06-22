@@ -2,7 +2,6 @@
 // TODO: check that everything is correct
 // TODO: probing -> some sort of way to do it alongside preprocessing
 // TODO: clause deleting
-// TODO: specialized data structures, not just clause(s) for everything
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
@@ -133,17 +132,14 @@ void destroy_solver(struct solver* solver) {
 		free(solver->preprocessing_stack.clauses[i].values);
 	free(solver->preprocessing_stack.clauses);
 
+	free(solver->ignore);
+	free(solver->remove);
+
 	free(solver);
 }
 
 void new_solution(struct solver* solver) {
 	// reconstruct solution after variable elimination
-
-	// TODO: some better way to do this?
-	for (int i = 1; i < solver->len_variables+1; i++)
-		if (solver->variables[i] == vundef)
-			solver->variables[i] = vtrue;
-
 	for (int pre_i = solver->preprocessing_stack.length-1; pre_i >= 0; pre_i--) {
 		struct clause c = solver->preprocessing_stack.clauses[pre_i];
 		value v = c.values[0];
@@ -196,7 +192,8 @@ void assign(struct solver* solver, value value, int reason) {
 	solver->level[index] = solver->decisions.length;
 	solver->reason[index] = reason;
 	solver->phase[index] = val == vfalse ? false : true;
-	extend_clause(&solver->trail, value);
+	solver->trail.values[solver->trail.length++] = value;
+	// extend_clause(&solver->trail, value);
 }
 
 int unit_propagate(struct solver* solver) {
@@ -305,7 +302,8 @@ void undo_decision(struct solver* solver) {
 	while (solver->trail.length > index) {
 		value val = solver->trail.values[solver->trail.length-1];
 		solver->variables[abs(val)] = vundef;
-		reduce_clause(&solver->trail, 1);
+		solver->trail.length--;
+		// reduce_clause(&solver->trail, 1);
 	}
 }
 
@@ -375,47 +373,39 @@ struct clause analyze(struct solver* solver, int conflict) {
 		}
 	}
 
-	// minimize
-	// mark all clause as ignore
-	// go throuh the trail
-	// - if level == 0 -> can remove, ignore
-	// - if dependents (ignore/remove) -> can remove, ignore
-
-	// TODO: dont allocate them all the time
-
-	bool* ignore = calloc(solver->len_variables+1, sizeof(bool));
-	bool* remove = calloc(solver->len_variables+1, sizeof(bool));
-	for (int i = 0; i < ret.length; i++) ignore[abs(ret.values[i])] = true;
+	// TODO: speed this up - dont go through the whole trail every time
+	memset(solver->ignore, false, (solver->len_variables+1)*sizeof(bool));
+	memset(solver->remove, false, (solver->len_variables+1)*sizeof(bool));
+	for (int i = 0; i < ret.length; i++) solver->ignore[abs(ret.values[i])] = true;
 	for (int lit_i = 0; lit_i < solver->trail.length; lit_i++) {
 		value l = solver->trail.values[lit_i];
 		int index = abs(l);
 		if (solver->level[index] == 0) {
-			ignore[index] = true;
-			remove[index] = true;
+			solver->ignore[index] = true;
+			solver->remove[index] = true;
 			continue;
 		}
 		if (solver->reason[index] == -1) continue;
 		struct clause reason = solver->problem.clauses[solver->reason[index]];
 		bool can_ignore = true;
 		for (int i = 0; i < reason.length; i++) {
-			if (!ignore[abs(reason.values[i])]) {
+			if (!solver->ignore[abs(reason.values[i])]) {
 				can_ignore = false;
 				break;
 			}
 		}
 		if (can_ignore) {
-			ignore[index] = true;
-			remove[index] = true;
+			solver->ignore[index] = true;
+			solver->remove[index] = true;
 		}
 	}
 	for (int i = 0; i < ret.length; i++) {
-		if (remove[abs(ret.values[i])]) {
+		if (solver->remove[abs(ret.values[i])]) {
 			solver->minimized++;
 			remove_clause_unord(&ret, i--);
 		}
 	}
-	free(ignore);
-	free(remove);
+
 	// TODO: optimize
 	for (int i = 1; i < ret.length; i++) {
 		value l = ret.values[i];
@@ -529,6 +519,11 @@ void allocate_data(struct solver* solver) {
 
 	solver->vsids = malloc((solver->len_variables+1) * sizeof(double));
 	for (int i = 1; i < solver->len_variables+1; i++) solver->vsids[i] = 0;
+
+	solver->ignore = calloc(solver->len_variables+1, sizeof(bool));
+	solver->remove = calloc(solver->len_variables+1, sizeof(bool));
+
+	solver->trail.values = malloc((solver->len_variables-solver->variables_eliminated) * sizeof(value));
 }
 
 struct solver* solve(FILE* file) {
