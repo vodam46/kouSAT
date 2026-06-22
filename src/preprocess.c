@@ -1,3 +1,5 @@
+// TODO: multiple passes of variable elimination, starting with strictly less clauses than at the start
+
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
@@ -29,7 +31,7 @@ void preprocess_unit_propagate(
 		struct solver* solver,
 		struct clause** occurs,
 		bool* strengthened,
-		bool* s0,
+		bool** arr,
 		bool* touched
 		) {
 	// printf("preprocess unit propagation\n");
@@ -42,8 +44,7 @@ void preprocess_unit_propagate(
 
 			if (strengthened != NULL)
 				strengthened[index] = true;
-			if (s0 != NULL)
-				s0[index] = s0[solver->problem.length-1];
+
 			if (touched != NULL)
 				for (int i = 0; i < solver->problem.clauses[index].length; i++)
 					touched[abs(solver->problem.clauses[index].values[i])] = true;
@@ -56,10 +57,10 @@ void preprocess_unit_propagate(
 			solver->clauses_removed++;
 			int index = occurs[v>0][abs(v)].values[0];
 
-			if (strengthened != NULL)
-				strengthened[index] = strengthened[solver->problem.length-1];
-			if (s0 != NULL)
-				s0[index] = s0[solver->problem.length-1];
+			if (arr != NULL)
+				for (int i = 0; arr[i]; i++)
+					arr[i][index] = arr[i][solver->problem.length-1];
+
 			if (touched != NULL)
 				for (int i = 0; i < solver->problem.clauses[index].length; i++)
 					touched[abs(solver->problem.clauses[index].values[i])] = true;
@@ -134,7 +135,7 @@ void preprocess_subsume_clauses(
 }
 
 bool extra_clauses_under_limit(int count, int c) {
-	return count <= 10 || count < c + (c>>1);
+	return count <= 25 || count <= c + (c>>1);
 }
 bool maybe_eliminate(
 	struct solver* solver,
@@ -146,7 +147,10 @@ bool maybe_eliminate(
 	struct clause* occurs_neg = &occurs[0][var];
 	struct clause* occurs_pos = &occurs[1][var];
 
-	if (occurs_neg->length > 2 || occurs_pos->length > 2) {
+	if (!extra_clauses_under_limit(
+		occurs_neg->length*occurs_pos->length,
+		occurs_neg->length+occurs_pos->length
+	)) {
 		int count = 0;
 		int c = occurs_neg->length + occurs_pos->length;
 		for (int l = 0; l < occurs_neg->length; l++) {
@@ -211,6 +215,7 @@ variable_eliminate:;
 				break;
 			}
 			if (nc.length == 1) {
+				// TODO: shouldnt ever happen? - would be cleared by self subsumtion
 				if (unit_check(solver, nc)) {
 					free(nc.values);
 					free(neg.clauses);
@@ -291,11 +296,11 @@ void toplevel_propagate(
 		struct solver* solver,
 		struct clause** occurs,
 		bool* strengthened,
-		bool* s0,
+		bool** arr,
 		bool* touched
 		) {
 	do {
-		preprocess_unit_propagate(solver, occurs, strengthened, s0, touched);
+		preprocess_unit_propagate(solver, occurs, strengthened, arr, touched);
 	} while (preprocess_pure_literals(solver, occurs));
 }
 
@@ -305,11 +310,12 @@ bool is_all_false(bool* arr, int length) {
 	return arr[0] == false && memcmp(arr, arr+1, (length-1)*sizeof(bool)) == 0;
 }
 
-int qsort_func(const void* l, const void* r) {
+int qsort_preprocess(const void* l, const void* r) {
 	int res = ((int*)l)[1] - ((int*)r)[1];
 	return res != 0 ? res : ((int*)l)[0] - ((int*)r)[0];
 }
 
+// TODO: figure out some more complex preprocessing
 void preprocess(struct solver* solver) {
 	printf("preprocessing\n");
 	for (int i = 0; i < solver->units.length; i++) {
@@ -327,6 +333,7 @@ void preprocess(struct solver* solver) {
 	struct clause** occurs = build_occurence_list(solver->problem, solver->len_variables);
 
 	toplevel_propagate(solver, occurs, NULL, NULL, NULL);
+	printf("toplevel %d\n" ,solver->problem.length);
 	if (solver->problem.length == 0) {
 		sat(solver);
 		free_occurs(solver, occurs);
@@ -351,11 +358,17 @@ void preprocess(struct solver* solver) {
 
 	// TODO: backwards subsumtion?
 	// check if a newly added clause is subsumed by an already added clause
+	int count = 0;
 	do {
+		if (count++ > 10) {
+			printf("round limit\n");
+			break;
+		}
+
 		s0 = realloc(s0, solver->problem.length * sizeof(bool));
 		memcpy(s0, added, solver->problem.length*sizeof(bool));
 		for (int i = 0; i < solver->problem.length; i++) {
-			if (s0[i]) continue;
+			if (!added[i]) continue;
 			struct clause clause = solver->problem.clauses[i];
 			for (int j = 0; j < clause.length; j++) {
 				value v = clause.values[j];
@@ -378,31 +391,37 @@ void preprocess(struct solver* solver) {
 			s1 = realloc(s1, solver->problem.length * sizeof(bool));
 			memcpy(s1, strengthened, solver->problem.length*sizeof(bool));
 			for (int i = 0; i < solver->problem.length; i++) {
-				if (s1[i]) continue;
 				s1[i] |= added[i];
-			}
-			for (int i = 0; i < solver->problem.length; i++) {
-				if (s0[i]) continue;
+				if (s1[i]) continue;
 				struct clause clause = solver->problem.clauses[i];
 				for (int j = 0; j < clause.length; j++) {
 					value v = clause.values[j];
 					if (marked[v<0][abs(v)]) {
-						s0[i] = true;
+						s1[i] = true;
 						break;
 					}
 				}
 			}
 
+			memset(marked[0], false, solver->len_variables+1);
+			memset(marked[1], false, solver->len_variables+1);
+
 			memset(added, false, solver->problem.length * sizeof(bool));
 			memset(strengthened, false, solver->problem.length * sizeof(bool));
 
+			// int count = 0;
+			// for (int i = 0; i < solver->problem.length; i++) count += s1[i];
+			// printf("self %d/%d\n", count, solver->problem.length);
+
+			// TODO: speed up self subsumtion
 			for (int i = 0; i < solver->problem.length; i++) {
 				if (!s1[i]) continue;
 				preprocess_self_subsume(solver, occurs, i, strengthened, touched);
 				if (solver->solved) goto preprocess_end;
 			}
 
-			toplevel_propagate(solver, occurs, strengthened, s0, touched);
+	 		bool* self_subsume_arr[] = {strengthened, s0, NULL};
+			toplevel_propagate(solver, occurs, strengthened, self_subsume_arr, touched);
 			if (solver->solved) goto preprocess_end;
 			if (solver->problem.length == 0) {
 				sat(solver);
@@ -412,25 +431,52 @@ void preprocess(struct solver* solver) {
 			added = realloc(added, solver->problem.length * sizeof(bool));
 			strengthened = realloc(strengthened, solver->problem.length * sizeof(bool));
 		} while (!is_all_false(strengthened, solver->problem.length));
+
+		// int count = 0;
+		// for (int i = 0; i < solver->problem.length; i++) count += s0[i];
+		// printf("subsume %d/%d\n", count, solver->problem.length);
+
 		for (int i = solver->problem.length-1; i >= 0; i--) {
 			if (!s0[i]) continue;
 			preprocess_subsume_clauses(solver, occurs, i, strengthened, touched);
 			if (i >= solver->problem.length) i = solver->problem.length;
 			if (solver->solved) goto preprocess_end;
 		}
+
 		do {
+			// printf("eliminate\n");
 			memcpy(s, touched, (solver->len_variables+1)*sizeof(bool));
 			memset(touched, false, (solver->len_variables+1)*sizeof(bool));
-			// TODO: sort by pos*neg
-			for (int i = 1; i < solver->len_variables+1; i++) {
-				if (!s[i]) continue;
-				if (solver->variables[i] != vundef) continue;
-				if (occurs[0][i].length == 0 || occurs[1][i].length == 0) continue;
-				if (occurs[0][i].length > 10 && occurs[1][i].length > 10) continue;
-				if (maybe_eliminate(solver, i, occurs, touched, &added)) {
+
+			int skip = 0;
+			int* arr = malloc(2 * solver->len_variables * sizeof(int));
+			for (int i = 0; i < solver->len_variables; i++) {
+				if (!s[i+1]) {
+					skip++;
+					continue;
+				}
+				if (solver->variables[i+1] != vundef) {
+					skip++;
+					continue;
+				}
+				arr[2*(i-skip)] = i+1;
+				arr[2*(i-skip)+1] = occurs[0][i+1].length * occurs[1][i+1].length;
+			}
+			// TODO: qsort_r? or my own function?
+			qsort(arr, solver->len_variables-skip, sizeof(int)*2, qsort_preprocess);
+
+			for (int i = 0; i < solver->len_variables-skip; i++) {
+				int var = arr[2*i];
+				if (!s[var]) continue;
+				if (solver->variables[var] != vundef) continue;
+				if (occurs[0][var].length == 0 || occurs[1][var].length == 0) continue;
+				if (occurs[0][var].length > 50 && occurs[1][var].length > 50) continue;
+
+				if (maybe_eliminate(solver, var, occurs, touched, &added)) {
 					solver->variables_eliminated++;
 					if (solver->solved) goto preprocess_end;
 					if (solver->problem.length == 0) {
+						free(arr);
 						sat(solver);
 						goto preprocess_end;
 					}
@@ -440,6 +486,7 @@ void preprocess(struct solver* solver) {
 					memset(strengthened, false, solver->problem.length*sizeof(bool));
 				}
 			}
+			free(arr);
 		} while (!is_all_false(touched, solver->len_variables+1));
 	} while (!is_all_false(added, solver->problem.length));
 
@@ -456,4 +503,5 @@ preprocess_end:;
 	free(marked[1]);
 
 	printf("after  %d\n", solver->problem.length);
+	solver->problem_len = solver->problem.length;
 }

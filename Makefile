@@ -55,13 +55,13 @@ debug-build:  | obj dep bin
 debug: debug-build
 	gdb $(OUT_DEBUG)
 
-profile: CFLAGS+=-pg
-profile: debug-build
-	time ./$(OUT_DEBUG)
-	gprof $(OUT_DEBUG) > profile.txt
-	less profile.txt
+profile: CFLAGS+=-DTEST
+profile: OUT=$(OUT_TEST)
+profile: $(OUT)
+	time valgrind -s --log-file="valgrind" --tool=callgrind ./$(OUT)
 
-valgrind: CFLAGS := $(filter-out -O3,$(CFLAGS))
+valgrind: CFLAGS := $(filter-out -O3,$(CFLAGS)) -Og
+valgrind: CFLAGS := $(filter-out -pg,$(CFLAGS))
 valgrind: $(OUT)
 	valgrind -s --log-file="valgrind" --track-fds=yes --track-origins=yes --leak-check=full ./$(OUT) $(FILE)
 

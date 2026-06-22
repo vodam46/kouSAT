@@ -15,15 +15,15 @@ more tests?
 	list of directories
 	call an advanced solver for the result
 	timeouts!!!
+	external script
+	more test files - cnf generators
 
 
 clear all the todos
 
 more preprocessing
-bve - sort by occurs(pos) * occurs(neg)
+bve
 	- https://www.msoos.org/2013/04/a-variable-elimination-improvement/
-	- more lenient - not just strictly less clauses
-		- figure out some sort of heuristic
 	- https://www.msoos.org/2014/04/why-its-hard-to-eliminate-variables/
 
 allsat - as an argument, and parameter of the solver?
@@ -75,6 +75,7 @@ when to schedule inprocessing?
 	- every restart? (too often?)
 	- when luby decreases?
 	- when too many clauses?
+	- every unit?
 
 internal test files? (keep in the git repo)
 	git submodules?
@@ -88,3 +89,21 @@ https://www.msoos.org/2011/01/on-the-new-watchlist-scheme/
 find some other blog about sat solving to take ideas from
 
 move *all* allocation to allocate_data
+
+clause vivification
+
+reduce the number of memory alloc's
+
+proper debug information
+
+built in checker for testing
+
+callgirnd with kcachegrind for profiling
+
+start optimizing - preprocessing takes up suspiciously long
+
+NULL checks on memory allocations
+
+preprocessing timeouts
+
+symmetry breaking - https://github.com/markusa4/satsuma

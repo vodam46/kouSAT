@@ -75,6 +75,7 @@ void remove_clauses_unord(struct clauses* clauses, unsigned index) {
 	}
 }
 
+// TODO: optimize this
 bool clause_contains(struct clause clause, value literal) {
 	for (int i = 0; i < clause.length; i++)
 		if (clause.values[i] == literal)

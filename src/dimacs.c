@@ -19,6 +19,7 @@ void parse(FILE* file, struct solver* solver) {
 		printf("invalid problem line\n\"%s\"", line);
 		exit(1);
 	}
+	printf("problem %s\n", line);
 	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
 	free(line);
 

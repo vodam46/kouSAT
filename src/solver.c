@@ -484,6 +484,10 @@ struct solver* cdcl(struct solver* solver) {
 			}
 
 			if (new.length > 1) update_vsids(solver, new);
+			if (new.length == 1) {
+				printf("(u %d)", new.values[0]);
+				fflush(stdout);
+			}
 
 			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
 			else extend_clauses(&solver->problem, new);
