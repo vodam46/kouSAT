@@ -55,10 +55,11 @@ debug-build:  | obj dep bin
 debug: debug-build
 	gdb $(OUT_DEBUG)
 
-profile: CFLAGS+=-DTEST
+profile: CFLAGS := $(filter-out -O3,$(CFLAGS)) -Og
+profile: CFLAGS := $(filter-out -pg,$(CFLAGS))
 profile: OUT=$(OUT_TEST)
 profile: $(OUT)
-	time valgrind -s --log-file="valgrind" --tool=callgrind ./$(OUT)
+	time valgrind -s --log-file="valgrind" --tool=callgrind ./$(OUT) $(FILE)
 
 valgrind: CFLAGS := $(filter-out -O3,$(CFLAGS)) -Og
 valgrind: CFLAGS := $(filter-out -pg,$(CFLAGS))

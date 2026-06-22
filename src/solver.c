@@ -454,6 +454,47 @@ void restart(struct solver* solver) {
 	solver->queue = solver->trail.length;
 }
 
+bool resolve_conflict(struct solver* solver, int conflict) {
+	if (++solver->conflicts%LUBY_MULT == 0) {
+		printf(".");
+		// printf("%d\n", solver->problem.length);
+		fflush(stdout);
+	}
+
+	if (solver->decisions.length == 0) {
+		unsat(solver);
+		return true;
+	}
+
+	struct clause new = analyze(solver, conflict);
+
+	if (new.length == 0) {
+		free(new.values);
+		unsat(solver);
+		return true;
+	}
+
+	if (new.length == 1) {
+		printf("(u %d)", new.values[0]);
+		fflush(stdout);
+		extend_clause(&solver->units, new.values[0]);
+	} else {
+		update_vsids(solver, new);
+		extend_clauses(&solver->problem, new);
+	}
+
+	// TODO: clean this up?
+	if (--solver->conflicts_until_restart == 0) {
+		restart(solver);
+		if (new.length == 1) assign(solver, new.values[0], -1);
+		else add_watched_clause(solver, solver->problem.length-1);
+	} else backtrack_learnt(solver, new);
+
+	if (new.length == 1) free(new.values);
+
+	return false;
+}
+
 struct solver* cdcl(struct solver* solver) {
 	printf("searching\n");
 	init_two_watched(solver);
@@ -461,45 +502,8 @@ struct solver* cdcl(struct solver* solver) {
 
 	while (!solver->solved) {
 		int conflict;
-		while ((conflict = unit_propagate(solver)) != -1) {
-			// TODO: simplify this into a function call?
-			// resolve_conflict()
-
-			if (++solver->conflicts%LUBY_MULT == 0) {
-				printf(".");
-				// printf("%d\n", solver->problem.length);
-				fflush(stdout);
-			}
-
-			if (solver->decisions.length == 0) {
-				unsat(solver);
-				return solver;
-			}
-
-			struct clause new = analyze(solver, conflict);
-			if (new.length == 0) {
-				free(new.values);
-				unsat(solver);
-				return solver;
-			}
-
-			if (new.length > 1) update_vsids(solver, new);
-			if (new.length == 1) {
-				printf("(u %d)", new.values[0]);
-				fflush(stdout);
-			}
-
-			if (new.length == 1) extend_clause(&solver->units, new.values[0]);
-			else extend_clauses(&solver->problem, new);
-
-			if (--solver->conflicts_until_restart == 0) {
-				restart(solver);
-				if (new.length == 1) assign(solver, new.values[0], -1);
-				else add_watched_clause(solver, solver->problem.length-1);
-			} else backtrack_learnt(solver, new);
-
-			if (new.length == 1) free(new.values);
-		}
+		while ((conflict = unit_propagate(solver)) != -1)
+			if (resolve_conflict(solver, conflict)) return solver;
 
 		if (solver->trail.length == solver->len_variables - solver->variables_eliminated) sat(solver);
 		else assign_guess(solver, guess(solver));
