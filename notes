@@ -8,12 +8,21 @@ fix the top level architecture, its a mess
 
 
 specialized data structures
-	- clause(s)
-	- watcher
+	- clause(s) - for "metadata" (activity/glue level, literals hash (for subsumtion), locked, original problem)
+	- watcher - clause index, blocked literal
 	- rename current clause struct to "int_arr"?
 
 
 read through the profiler, dont just run the program for no reason
+
+
+args
+	- preprocessing parameters
+		- preprocessing rounds
+		- variable elimination strictness
+		- disable certain steps
+	- verbosity (obviously)
+	- all solutions
 
 
 more tests?
@@ -32,6 +41,7 @@ bve
 	- https://www.msoos.org/2014/04/why-its-hard-to-eliminate-variables/
 
 allsat - as an argument, and parameter of the solver?
+	- add negation of choices as new clause, backtrack with it
 
 for each function, note the requirements, invariant, and result - O(n) complexity?
 	write documentation for the internals
@@ -112,3 +122,14 @@ NULL checks on memory allocations
 preprocessing timeouts
 
 symmetry breaking - https://github.com/markusa4/satsuma
+
+multiple conflict clauses?
+	- finish unit propagation completely -> multiple conflicts?
+
+no more malloc((solver->len_variables+1)*sizeof(...)) - allocate only as much as is needed
+
+https://matryoshka-project.github.io
+
+inprocessing
+	- keep occurence lists?
+	- conflict clause subsumtion -> remove all subsumed

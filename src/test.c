@@ -401,7 +401,7 @@ char* unsat_files[] = {
 
 	"../cnf/unsat.cnf",
 
-	// "../cnf/mass/2bitadd_10.cnf",
+	"../cnf/mass/2bitadd_10.cnf",
 
 	"../cnf/nqueens/2queens.cnf",
 	"../cnf/nqueens/3queens.cnf",
@@ -511,6 +511,7 @@ int total_conflicts = 0;
 int total_reduced = 0;
 int total_removed = 0;
 int total_eliminated = 0;
+int total_probed = 0;
 void test_files(char* files[], bool result) {
 	for (int i = 0; files[i]; i++) {
 		char* filename = files[i];
@@ -523,14 +524,15 @@ void test_files(char* files[], bool result) {
 		total_reduced += s->clauses_reduced;
 		total_removed += s->clauses_removed;
 		total_eliminated += s->variables_eliminated;
+		total_probed += s->probed;
 		printf("total_minimized %d\n", total_minimized);
 		printf("total_conflicts %d\n", total_conflicts);
 		printf("total reduced %d\n", total_reduced);
 		printf("total removed %d\n", total_removed);
 		printf("total eliminated %d\n", total_eliminated);
-		printf("\n");
+		printf("total probed %d\n", total_probed);
 
-		printf("success %b\n", s->result == result);
+		printf("success %b\n\n\n", s->result == result);
 		assert(s->solved);
 		assert(s->result == result);
 		destroy_solver(s);

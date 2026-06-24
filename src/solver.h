@@ -20,6 +20,7 @@ struct solver {
 	int clauses_removed;
 	int clauses_reduced;
 	int variables_eliminated;
+	int probed;
 
 	int problem_len;
 	struct clauses problem;

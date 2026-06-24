@@ -1,4 +1,3 @@
-// TODO: all solutions, not just the first one it finds -> add negative of choices as new clause
 // TODO: check that everything is correct
 // TODO: probing -> some sort of way to do it alongside preprocessing
 // TODO: clause deleting
@@ -139,6 +138,9 @@ void destroy_solver(struct solver* solver) {
 }
 
 void new_solution(struct solver* solver) {
+	for (int i = 1; i < solver->len_variables+1; i++)
+		if (solver->variables[i] == vundef)
+			solver->variables[i] = vtrue;
 	// reconstruct solution after variable elimination
 	for (int pre_i = solver->preprocessing_stack.length-1; pre_i >= 0; pre_i--) {
 		struct clause c = solver->preprocessing_stack.clauses[pre_i];
@@ -166,6 +168,7 @@ void print_stats(struct solver* solver) {
 	printf("clauses reduced %d\n", solver->clauses_reduced);
 	printf("clauses removed %d\n", solver->clauses_removed);
 	printf("variables eliminated %d\n", solver->variables_eliminated);
+	printf("probed %d\n", solver->probed);
 }
 
 void unsat(struct solver* solver) {
@@ -305,6 +308,7 @@ void undo_decision(struct solver* solver) {
 		solver->trail.length--;
 		// reduce_clause(&solver->trail, 1);
 	}
+	solver->queue = solver->trail.length;
 }
 
 void add_watched_clause(struct solver* solver, int index) {
@@ -339,7 +343,6 @@ int backtrack_level(struct solver* solver, struct clause new) {
 void backtrack_learnt(struct solver* solver, struct clause new) {
 	int level = backtrack_level(solver, new);
 	while (solver->decisions.length > level) undo_decision(solver);
-	solver->queue = solver->trail.length;
 
 	int reason = -1;
 	if (new.length != 1) {
@@ -358,20 +361,8 @@ int count_cur_level(struct solver* solver, struct clause clause) {
 	return n;
 }
 
-struct clause analyze(struct solver* solver, int conflict) {
-	struct clause ret;
-	ret.length = solver->problem.clauses[conflict].length;
-	ret.values = malloc(ret.length*sizeof(value));
-	memcpy(ret.values, solver->problem.clauses[conflict].values, ret.length*sizeof(value));
-
-	int index = solver->trail.length-1;
-
-	while (count_cur_level(solver, ret) > 1) {
-		value literal = solver->trail.values[index--];
-		if (clause_contains(ret, -literal)) {
-			resolve(&ret, solver->problem.clauses[solver->reason[abs(literal)]], literal);
-		}
-	}
+void minimize(struct solver* solver, struct clause* clause) {
+	struct clause ret = *clause;
 
 	// TODO: speed this up - dont go through the whole trail every time
 	memset(solver->ignore, false, (solver->len_variables+1)*sizeof(bool));
@@ -405,6 +396,26 @@ struct clause analyze(struct solver* solver, int conflict) {
 			remove_clause_unord(&ret, i--);
 		}
 	}
+	*clause = ret;
+}
+
+struct clause analyze(struct solver* solver, int conflict) {
+	struct clause ret;
+	copy_clause(&ret, solver->problem.clauses[conflict]);
+
+	int index = solver->trail.length-1;
+	int count;
+	while ((count = count_cur_level(solver, ret)) > 1) {
+analyze_loop:;
+		value literal = solver->trail.values[index--];
+		if (clause_contains(ret, -literal)) {
+			resolve(&ret, solver->problem.clauses[solver->reason[abs(literal)]], literal);
+			count--;
+		}
+		if (count > 1) goto analyze_loop;
+	}
+
+	minimize(solver, &ret);
 
 	// TODO: optimize
 	for (int i = 1; i < ret.length; i++) {
@@ -422,9 +433,78 @@ struct clause analyze(struct solver* solver, int conflict) {
 }
 
 void probe(struct solver* solver) {
-	// TODO: for each literal - try true/false
-	// if conflict -> that literal is opposite, learn the conflict (if good/short)
-	// if variable true in both cases -> new unit
+	// TODO: for each literal - try true/false -> if variable true in both cases -> new unit
+	// TODO: speed this up -> dont check every variable/literal every time
+	printf("probing\n");
+
+	bool* seen[2];
+	seen[0] = malloc(solver->len_variables*sizeof(bool));
+	seen[1] = malloc(solver->len_variables*sizeof(bool));
+
+probe_restart:
+	bool change = false;
+
+	if (unit_propagate(solver) != -1) {
+		unsat(solver);
+		return;
+	}
+
+	for (int i = 1; i < solver->len_variables+1; i++) {
+		for (int p = 0; p < 2; p++) {
+			if (seen[p][i-1]) continue;
+			if (solver->variables[i] != vundef) continue;
+			if (solver->watched_clauses[!p][i].length == 0) continue;
+
+			value var = p ? i : -i;
+
+			assign_guess(solver, var);
+
+			int conflict = unit_propagate(solver);
+
+			if (conflict == -1) {
+				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
+					sat(solver);
+					return;
+				}
+
+				for (int j = i+1; j < solver->len_variables+1; j++) {
+					if (solver->variables[j] == vundef) continue;
+					seen[solver->variables[j]==vtrue][j-1] = true;
+				}
+				undo_decision(solver);
+				continue;
+			}
+
+			struct clause new = analyze(solver, conflict);
+			value unit = new.values[0];
+			free(new.values);
+
+			undo_decision(solver);
+
+			int now = solver->trail.length;
+
+			extend_clause(&solver->units, unit);
+			assign(solver, unit, -1);
+
+			conflict = unit_propagate(solver);
+
+			solver->probed += solver->trail.length - now;
+			solver->conflicts++;
+			change = true;
+
+			if (conflict != -1) {
+				unsat(solver);
+				return;
+			}
+		}
+	}
+	if (change) {
+		memset(seen[0], false, solver->len_variables*sizeof(bool));
+		memset(seen[1], false, solver->len_variables*sizeof(bool));
+		goto probe_restart;
+	}
+	free(seen[0]);
+	free(seen[1]);
 }
 
 int luby(int i) {
@@ -441,7 +521,6 @@ void restart(struct solver* solver) {
 	fflush(stdout);
 	solver->conflicts_until_restart = luby(++solver->restarts)*LUBY_MULT;
 	while (solver->decisions.length > 0) undo_decision(solver);
-	solver->queue = solver->trail.length;
 }
 
 bool resolve_conflict(struct solver* solver, int conflict) {
@@ -487,7 +566,6 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 
 struct solver* cdcl(struct solver* solver) {
 	printf("searching\n");
-	init_two_watched(solver);
 	init_vsids(solver);
 
 	while (!solver->solved) {
@@ -520,8 +598,8 @@ void allocate_data(struct solver* solver) {
 	solver->vsids = malloc((solver->len_variables+1) * sizeof(double));
 	for (int i = 1; i < solver->len_variables+1; i++) solver->vsids[i] = 0;
 
-	solver->ignore = calloc(solver->len_variables+1, sizeof(bool));
-	solver->remove = calloc(solver->len_variables+1, sizeof(bool));
+	solver->ignore = malloc((solver->len_variables+1)*sizeof(bool));
+	solver->remove = malloc((solver->len_variables+1)*sizeof(bool));
 
 	solver->trail.values = malloc((solver->len_variables-solver->variables_eliminated) * sizeof(value));
 }
@@ -555,6 +633,7 @@ struct solver* solve(FILE* file) {
 	solver->clauses_removed		= 0;
 	solver->clauses_reduced		= 0;
 	solver->variables_eliminated= 0;
+	solver->probed				= 0;
 
 	solver->restarts				= 0;
 	solver->conflicts_until_restart	= LUBY_MULT;
@@ -564,5 +643,11 @@ struct solver* solve(FILE* file) {
 	allocate_data(solver);
 	preprocess(solver);
 	if (solver->solved) return solver;
+
+	init_two_watched(solver);
+
+	probe(solver);
+	if (solver->solved) return solver;
+
 	return cdcl(solver);
 }
