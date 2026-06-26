@@ -4,7 +4,7 @@ NAME=kouSAT
 OUT=bin/$(NAME)
 OUT_DEBUG=bin/$(NAME)-debug
 OUT_TEST=bin/$(NAME)-test
-CFLAGS=-Wall -Wextra -pedantic -DPROJECT_DIR='"$(shell pwd)"' -Wunreachable-code -g -pg -O3 -flto
+CFLAGS=-Wall -Wextra -pedantic -DPROJECT_DIR='"$(shell pwd)"' -Wunreachable-code -g -O3 -flto
 CLIBS=
 
 FILE=

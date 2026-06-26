@@ -287,6 +287,7 @@ value guess(struct solver* solver) {
 		}
 	}
 	if (var == 0) {
+		print_solver(solver);
 		printf("guessing error\n");
 		exit(1);
 	}
@@ -433,25 +434,46 @@ analyze_loop:;
 }
 
 void probe(struct solver* solver) {
-	// TODO: for each literal - try true/false -> if variable true in both cases -> new unit
-	// TODO: speed this up -> dont check every variable/literal every time
+	// TODO: optimize same way as preprocessing?
+	// TODO: clean this up
 	printf("probing\n");
 
 	bool* seen[2];
 	seen[0] = malloc(solver->len_variables*sizeof(bool));
 	seen[1] = malloc(solver->len_variables*sizeof(bool));
 
+	enum vbool* values[2];
+	values[0] = malloc(solver->len_variables*sizeof(enum vbool));
+	values[1] = malloc(solver->len_variables*sizeof(enum vbool));
+
 probe_restart:
 	bool change = false;
 
 	if (unit_propagate(solver) != -1) {
+		free(seen[0]);
+		free(seen[1]);
+		free(values[0]);
+		free(values[1]);
 		unsat(solver);
 		return;
 	}
 
+	memset(seen[0], false, solver->len_variables*sizeof(bool));
+	memset(seen[1], false, solver->len_variables*sizeof(bool));
+
 	for (int i = 1; i < solver->len_variables+1; i++) {
+
+		if (seen[0][i-1] && seen[1][i-1]) continue;
+		if (solver->watched_clauses[0][i].length == 0
+				&& solver->watched_clauses[1][i].length == 0) continue;
+		if (solver->variables[i] != vundef) continue;
+
+		bool check_extra = true;
+		struct clause var_list[2];
+		var_list[0] = (struct clause){NULL, 0};
+		var_list[1] = (struct clause){NULL, 0};
+
 		for (int p = 0; p < 2; p++) {
-			if (seen[p][i-1]) continue;
 			if (solver->variables[i] != vundef) continue;
 			if (solver->watched_clauses[!p][i].length == 0) continue;
 
@@ -463,13 +485,25 @@ probe_restart:
 
 			if (conflict == -1) {
 				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
+					free(seen[0]);
+					free(seen[1]);
+					free(values[0]);
+					free(values[1]);
+					free(var_list[0].values);
+					free(var_list[1].values);
 					sat(solver);
 					return;
 				}
 
-				for (int j = i+1; j < solver->len_variables+1; j++) {
-					if (solver->variables[j] == vundef) continue;
-					seen[solver->variables[j]==vtrue][j-1] = true;
+				for (int j = 0; j < solver->len_variables; j++) {
+					values[p][j] = vundef;
+				}
+				for (int j = solver->decisions.values[0]; j < solver->trail.length; j++) {
+					int index = abs(solver->trail.values[j]);
+					enum vbool val = solver->variables[index];
+					seen[val==vtrue][index-1] = true;
+					values[p][index-1] = val;
+					extend_clause(&var_list[p], index);
 				}
 				undo_decision(solver);
 				continue;
@@ -491,13 +525,69 @@ probe_restart:
 			solver->probed += solver->trail.length - now;
 			solver->conflicts++;
 			change = true;
+			check_extra = false;
 
 			if (conflict != -1) {
+				free(seen[0]);
+				free(seen[1]);
+				free(values[0]);
+				free(values[1]);
+				free(var_list[0].values);
+				free(var_list[1].values);
 				unsat(solver);
 				return;
 			}
 		}
+		if (check_extra) {
+			struct clause arr;
+			if (var_list[0].length < var_list[1].length)
+				arr = var_list[0];
+			else
+				arr = var_list[1];
+			for (int index = 0; index < arr.length; index++) {
+				int i = arr.values[index];
+				if (solver->variables[i+1] != vundef
+						|| values[0][i] == vundef
+						|| values[1][i] == vundef
+						|| values[0][i] != values[1][i]) continue;
+				int now = solver->trail.length;
+				value var = i+1;
+				if (values[0][i] == vtrue) {
+					extend_clause(&solver->units, var);
+					assign(solver, var, -1);
+				} else if (values[0][i] == vfalse) {
+					extend_clause(&solver->units, -var);
+					assign(solver, -var, -1);
+				}
+				change = true;
+				int conflict = unit_propagate(solver);
+				solver->probed += solver->trail.length - now;
+				if (conflict != -1) {
+					free(seen[0]);
+					free(seen[1]);
+					free(values[0]);
+					free(values[1]);
+					free(var_list[0].values);
+					free(var_list[1].values);
+					unsat(solver);
+					return;
+				}
+				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
+					free(seen[0]);
+					free(seen[1]);
+					free(values[0]);
+					free(values[1]);
+					free(var_list[0].values);
+					free(var_list[1].values);
+					sat(solver);
+					return;
+				}
+			}
+		}
+		free(var_list[0].values);
+		free(var_list[1].values);
 	}
+
 	if (change) {
 		memset(seen[0], false, solver->len_variables*sizeof(bool));
 		memset(seen[1], false, solver->len_variables*sizeof(bool));
@@ -505,6 +595,8 @@ probe_restart:
 	}
 	free(seen[0]);
 	free(seen[1]);
+	free(values[0]);
+	free(values[1]);
 }
 
 int luby(int i) {
@@ -649,5 +741,6 @@ struct solver* solve(FILE* file) {
 	probe(solver);
 	if (solver->solved) return solver;
 
+	print_stats(solver);
 	return cdcl(solver);
 }

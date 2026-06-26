@@ -9,6 +9,7 @@ fix the top level architecture, its a mess
 
 specialized data structures
 	- clause(s) - for "metadata" (activity/glue level, literals hash (for subsumtion), locked, original problem)
+		- dont allocate a new pointer for the clause, put it "next to" the data - flexible array member
 	- watcher - clause index, blocked literal
 	- rename current clause struct to "int_arr"?
 
@@ -133,3 +134,15 @@ https://matryoshka-project.github.io
 inprocessing
 	- keep occurence lists?
 	- conflict clause subsumtion -> remove all subsumed
+
+https://www.msoos.org/2010/05/on-failed-literal-probing/
+
+fix printing - in the style of kissat? (but more clear which is which)
+
+regularly scheduled probing
+
+speed up probing - checking each variable is slow
+
+memcheck - there might be a memory leak again - preprocessing, occurence lists
+
+read through microsat - https://github.com/marijnheule/microsat
