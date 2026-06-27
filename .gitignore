@@ -2,6 +2,6 @@ bin
 dep
 obj
 gmon.out
-valgrind
+valgrind*
 files
 gprof.png

@@ -5,6 +5,22 @@
 
 #include "clause.h"
 
+struct clause nilclause = {
+	.values=NULL,
+	.length=0,
+	.learned=false,
+	.mask=(uint64_t)0
+};
+
+
+int get_mask_index(value v) {
+	return abs(v)%64;
+}
+
+uint64_t get_mask(value v) {
+	return ((uint64_t)1)<<get_mask_index(v);
+}
+
 enum vbool get_vbool(value v) {
 	return v>0 ? vtrue : vfalse;
 }
@@ -34,24 +50,35 @@ void extend_clause(struct clause* clause, value value) {
 	clause->length++;
 	clause->values = realloc(clause->values, clause->length * sizeof(value));
 	clause->values[clause->length-1] = value;
+
+	clause->mask |= get_mask(value);
 }
 
 void remove_clause_unord(struct clause* clause, unsigned index) {
 	clause->length--;
+	uint64_t mv = get_mask(clause->values[index]);
 	clause->values[index] = clause->values[clause->length];
-	if (clause->length)
+	if (clause->length) {
 		clause->values = realloc(clause->values, clause->length * sizeof(value));
-	else {
+	} else {
 		free(clause->values);
 		clause->values = NULL;
 	}
+	for (int i = 0; i < clause->length; i++)
+		if (get_mask(clause->values[i]) == mv)
+			return;
+	clause->mask &= ~mv;
 }
 
+// TODO: this function is currently unused
 void reduce_clause(struct clause* clause, unsigned length) {
 	clause->length -= length;
-	if (clause->length)
-		clause->values = realloc(clause->values, clause->length * sizeof(int));
-	else {
+	if (clause->length) {
+		clause->values = realloc(clause->values, clause->length * sizeof(value));
+		clause->mask = 0;
+		for (int i = 0; i < clause->length; i++)
+			clause->mask |= get_mask(clause->values[i]);
+	} else {
 		free(clause->values);
 		clause->values = NULL;
 	}
@@ -75,8 +102,8 @@ void remove_clauses_unord(struct clauses* clauses, unsigned index) {
 	}
 }
 
-// TODO: optimize this
 bool clause_contains(struct clause clause, value literal) {
+	if (~clause.mask & get_mask(literal)) return false;
 	for (int i = 0; i < clause.length; i++)
 		if (clause.values[i] == literal)
 			return true;
@@ -121,13 +148,18 @@ void remove_clause_value(struct clause* clause, value value) {
 
 bool subsumes(struct clause left, struct clause right) {
 	if (left.length > right.length) return false;
+	if (left.mask & ~right.mask) return false;
 	for (int i = 0; i < left.length; i++)
 		if (!clause_contains(right, left.values[i]))
 			return false;
 	return true;
 }
+
 void copy_clause(struct clause* dest, struct clause orig) {
 	dest->length = orig.length;
+	dest->mask = orig.mask;
+	dest->learned = orig.learned;
+
 	dest->values = malloc(orig.length * sizeof(value));
 	memcpy(dest->values, orig.values, orig.length * sizeof(value));
 }

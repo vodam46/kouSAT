@@ -17,7 +17,7 @@ default: $(OUT)
 build: $(OUT)
 
 clean:
-	-rm -Rf obj dep bin valgrind* profile.txt gmon.out
+	-rm -Rf obj dep bin profile.txt gmon.out
 
 run: $(OUT)
 	time ./$(OUT) $(FILE)

@@ -35,9 +35,9 @@ void print_watched(struct solver* solver) {
 	if (solver->watched_clauses[0] == NULL) return;
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		printf("-%d = ", i);
-		print_clause(solver->watched_clauses[0][i]);
+		print_int_arr(solver->watched_clauses[0][i]);
 		printf("%d = ", i);
-		print_clause(solver->watched_clauses[1][i]);
+		print_int_arr(solver->watched_clauses[1][i]);
 	}
 }
 
@@ -59,12 +59,12 @@ void print_reason(struct solver* solver) {
 	printf("\n");
 }
 
-void print_occur(struct solver* solver, struct clause** occur) {
+void print_occur(struct solver* solver, struct int_arr** occur) {
 	for (int b = 0; b < 2; b++) {
 		printf("b %b\n", b);
 		for (int i = 1; i < solver->len_variables+1; i++) {
 			printf("%d = ", i);
-			print_clause(occur[b][i]);
+			print_int_arr(occur[b][i]);
 		}
 	}
 }
@@ -77,7 +77,7 @@ void print_solver(struct solver* solver) {
 	printf("problem\n");
 	print_clauses(solver->problem);
 	printf("units ");
-	print_clause(solver->units);
+	print_int_arr(solver->units);
 
 	printf("watched\n");
 	print_watched(solver);
@@ -86,10 +86,10 @@ void print_solver(struct solver* solver) {
 	print_variables(solver);
 
 	printf("trail\n");
-	print_clause(solver->trail);
+	print_int_arr(solver->trail);
 
 	printf("decisions\n");
-	print_clause(solver->decisions);
+	print_int_arr(solver->decisions);
 
 	printf("level\n");
 	print_level(solver);
@@ -109,7 +109,7 @@ void destroy_solver(struct solver* solver) {
 	for (int i = 0; i < solver->problem.length; i++)
 		free(solver->problem.clauses[i].values);
 	free(solver->problem.clauses);
-	free(solver->units.values);
+	free(solver->units.arr);
 
 	free(solver->variables);
 	free(solver->reason);
@@ -117,11 +117,11 @@ void destroy_solver(struct solver* solver) {
 	for (int b = 0; b < 2; b++) {
 		if (solver->watched_clauses[b] == NULL) continue;
 		for (int i = 1; i < solver->len_variables+1; i++)
-			free(solver->watched_clauses[b][i].values);
+			free(solver->watched_clauses[b][i].arr);
 		free(solver->watched_clauses[b]);
 	}
-	free(solver->trail.values);
-	free(solver->decisions.values);
+	free(solver->trail.arr);
+	free(solver->decisions.arr);
 	if (solver->vsids != NULL)
 		free(solver->vsids);
 	if (solver->phase != NULL)
@@ -195,18 +195,17 @@ void assign(struct solver* solver, value value, int reason) {
 	solver->level[index] = solver->decisions.length;
 	solver->reason[index] = reason;
 	solver->phase[index] = val == vfalse ? false : true;
-	solver->trail.values[solver->trail.length++] = value;
-	// extend_clause(&solver->trail, value);
+	solver->trail.arr[solver->trail.length++] = value;
 }
 
 int unit_propagate(struct solver* solver) {
 	while (solver->queue < solver->trail.length) {
-		value check = solver->trail.values[solver->queue++];
-		struct clause* clauses_i = &solver->watched_clauses[check<0][abs(check)];
+		value check = solver->trail.arr[solver->queue++];
+		struct int_arr* clauses_i = &solver->watched_clauses[check<0][abs(check)];
 		int left, right;
 
 		for (left = right = 0; right < clauses_i->length;) {
-			int clause_i = clauses_i->values[right];
+			int clause_i = clauses_i->arr[right];
 			struct clause clause = solver->problem.clauses[clause_i];
 
 			// make sure the literal is in [1]
@@ -219,7 +218,7 @@ int unit_propagate(struct solver* solver) {
 			// first is true, can skip
 			value first = clause.values[0];
 			if (solver->variables[abs(first)] == get_vbool(first)) {
-				clauses_i->values[left++] = clause_i;
+				clauses_i->arr[left++] = clause_i;
 				continue;
 			}
 
@@ -237,22 +236,22 @@ int unit_propagate(struct solver* solver) {
 				value v = clause.values[index];
 				clause.values[index] = clause.values[1];
 				clause.values[1] = v;
-				extend_clause(&solver->watched_clauses[v>0][abs(v)], clause_i);
+				extend_int_arr(&solver->watched_clauses[v>0][abs(v)], clause_i);
 				continue;
 			}
 
 			// couldnt find any, is unit
-			clauses_i->values[left++] = clause_i;
+			clauses_i->arr[left++] = clause_i;
 			if (solver->variables[abs(clause.values[0])] != vundef) {
 				while (right < clauses_i->length)
-					clauses_i->values[left++] = clauses_i->values[right++];
-				reduce_clause(clauses_i, right-left);
+					clauses_i->arr[left++] = clauses_i->arr[right++];
+				reduce_int_arr(clauses_i, right-left);
 				return clause_i;
 			} else {
 				assign(solver, first, clause_i);
 			}
 		}
-		reduce_clause(clauses_i, right-left);
+		reduce_int_arr(clauses_i, right-left);
 	}
 
 	return -1;
@@ -295,19 +294,18 @@ value guess(struct solver* solver) {
 }
 
 void assign_guess(struct solver* solver, value guess) {
-	extend_clause(&solver->decisions, solver->trail.length);
+	extend_int_arr(&solver->decisions, solver->trail.length);
 	assign(solver, guess, -1);
 }
 
 void undo_decision(struct solver* solver) {
-	int index = solver->decisions.values[solver->decisions.length-1];
-	reduce_clause(&solver->decisions, 1);
+	int index = solver->decisions.arr[solver->decisions.length-1];
+	reduce_int_arr(&solver->decisions, 1);
 
 	while (solver->trail.length > index) {
-		value val = solver->trail.values[solver->trail.length-1];
+		value val = solver->trail.arr[solver->trail.length-1];
 		solver->variables[abs(val)] = vundef;
 		solver->trail.length--;
-		// reduce_clause(&solver->trail, 1);
 	}
 	solver->queue = solver->trail.length;
 }
@@ -316,7 +314,7 @@ void add_watched_clause(struct solver* solver, int index) {
 	struct clause clause = solver->problem.clauses[index];
 	for (int j = 0; j < 2; j++) {
 		value v = clause.values[j];
-		extend_clause(&solver->watched_clauses[v>0][abs(v)], index);
+		extend_int_arr(&solver->watched_clauses[v>0][abs(v)], index);
 	}
 }
 
@@ -370,7 +368,7 @@ void minimize(struct solver* solver, struct clause* clause) {
 	memset(solver->remove, false, (solver->len_variables+1)*sizeof(bool));
 	for (int i = 0; i < ret.length; i++) solver->ignore[abs(ret.values[i])] = true;
 	for (int lit_i = 0; lit_i < solver->trail.length; lit_i++) {
-		value l = solver->trail.values[lit_i];
+		value l = solver->trail.arr[lit_i];
 		int index = abs(l);
 		if (solver->level[index] == 0) {
 			solver->ignore[index] = true;
@@ -403,12 +401,13 @@ void minimize(struct solver* solver, struct clause* clause) {
 struct clause analyze(struct solver* solver, int conflict) {
 	struct clause ret;
 	copy_clause(&ret, solver->problem.clauses[conflict]);
+	ret.learned = true;
 
 	int index = solver->trail.length-1;
 	int count;
 	while ((count = count_cur_level(solver, ret)) > 1) {
 analyze_loop:;
-		value literal = solver->trail.values[index--];
+		value literal = solver->trail.arr[index--];
 		if (clause_contains(ret, -literal)) {
 			resolve(&ret, solver->problem.clauses[solver->reason[abs(literal)]], literal);
 			count--;
@@ -446,6 +445,8 @@ void probe(struct solver* solver) {
 	values[0] = malloc(solver->len_variables*sizeof(enum vbool));
 	values[1] = malloc(solver->len_variables*sizeof(enum vbool));
 
+	int round = 0;
+
 probe_restart:
 	bool change = false;
 
@@ -458,26 +459,36 @@ probe_restart:
 		return;
 	}
 
+	if (round++ > 5) {
+		printf("probing round cutoff\n");
+
+		free(seen[0]);
+		free(seen[1]);
+		free(values[0]);
+		free(values[1]);
+		return;
+	}
+
 	memset(seen[0], false, solver->len_variables*sizeof(bool));
 	memset(seen[1], false, solver->len_variables*sizeof(bool));
 
-	for (int i = 1; i < solver->len_variables+1; i++) {
+	for (int var_i = 1; var_i < solver->len_variables+1; var_i++) {
 
-		if (seen[0][i-1] && seen[1][i-1]) continue;
-		if (solver->watched_clauses[0][i].length == 0
-				&& solver->watched_clauses[1][i].length == 0) continue;
-		if (solver->variables[i] != vundef) continue;
+		if (seen[0][var_i-1] && seen[1][var_i-1]) continue;
+		if (solver->watched_clauses[0][var_i].length == 0
+				&& solver->watched_clauses[1][var_i].length == 0) continue;
+		if (solver->variables[var_i] != vundef) continue;
 
 		bool check_extra = true;
-		struct clause var_list[2];
-		var_list[0] = (struct clause){NULL, 0};
-		var_list[1] = (struct clause){NULL, 0};
+		struct int_arr var_list[2];
+		var_list[0] = nil_int_arr;
+		var_list[1] = nil_int_arr;
 
 		for (int p = 0; p < 2; p++) {
-			if (solver->variables[i] != vundef) continue;
-			if (solver->watched_clauses[!p][i].length == 0) continue;
+			if (solver->variables[var_i] != vundef) continue;
+			if (solver->watched_clauses[!p][var_i].length == 0) continue;
 
-			value var = p ? i : -i;
+			value var = p ? var_i : -var_i;
 
 			assign_guess(solver, var);
 
@@ -489,8 +500,8 @@ probe_restart:
 					free(seen[1]);
 					free(values[0]);
 					free(values[1]);
-					free(var_list[0].values);
-					free(var_list[1].values);
+					free(var_list[0].arr);
+					free(var_list[1].arr);
 					sat(solver);
 					return;
 				}
@@ -498,12 +509,12 @@ probe_restart:
 				for (int j = 0; j < solver->len_variables; j++) {
 					values[p][j] = vundef;
 				}
-				for (int j = solver->decisions.values[0]; j < solver->trail.length; j++) {
-					int index = abs(solver->trail.values[j]);
+				for (int j = solver->decisions.arr[0]; j < solver->trail.length; j++) {
+					int index = abs(solver->trail.arr[j]);
 					enum vbool val = solver->variables[index];
 					seen[val==vtrue][index-1] = true;
 					values[p][index-1] = val;
-					extend_clause(&var_list[p], index);
+					extend_int_arr(&var_list[p], index);
 				}
 				undo_decision(solver);
 				continue;
@@ -517,7 +528,7 @@ probe_restart:
 
 			int now = solver->trail.length;
 
-			extend_clause(&solver->units, unit);
+			extend_int_arr(&solver->units, unit);
 			assign(solver, unit, -1);
 
 			conflict = unit_propagate(solver);
@@ -532,31 +543,26 @@ probe_restart:
 				free(seen[1]);
 				free(values[0]);
 				free(values[1]);
-				free(var_list[0].values);
-				free(var_list[1].values);
+				free(var_list[0].arr);
+				free(var_list[1].arr);
 				unsat(solver);
 				return;
 			}
 		}
 		if (check_extra) {
-			struct clause arr;
-			if (var_list[0].length < var_list[1].length)
-				arr = var_list[0];
-			else
-				arr = var_list[1];
+			struct int_arr arr = var_list[0].length < var_list[1].length ? var_list[0] : var_list[1];
 			for (int index = 0; index < arr.length; index++) {
-				int i = arr.values[index];
-				if (solver->variables[i+1] != vundef
-						|| values[0][i] == vundef
-						|| values[1][i] == vundef
-						|| values[0][i] != values[1][i]) continue;
+				value var = arr.arr[index];
+				if (solver->variables[var] != vundef
+						|| values[0][var-1] == vundef
+						|| values[1][var-1] == vundef
+						|| values[0][var-1] != values[1][var-1]) continue;
 				int now = solver->trail.length;
-				value var = i+1;
-				if (values[0][i] == vtrue) {
-					extend_clause(&solver->units, var);
+				if (values[0][var-1] == vtrue) {
+					extend_int_arr(&solver->units, var);
 					assign(solver, var, -1);
-				} else if (values[0][i] == vfalse) {
-					extend_clause(&solver->units, -var);
+				} else if (values[0][var-1] == vfalse) {
+					extend_int_arr(&solver->units, -var);
 					assign(solver, -var, -1);
 				}
 				change = true;
@@ -567,8 +573,8 @@ probe_restart:
 					free(seen[1]);
 					free(values[0]);
 					free(values[1]);
-					free(var_list[0].values);
-					free(var_list[1].values);
+					free(var_list[0].arr);
+					free(var_list[1].arr);
 					unsat(solver);
 					return;
 				}
@@ -577,15 +583,16 @@ probe_restart:
 					free(seen[1]);
 					free(values[0]);
 					free(values[1]);
-					free(var_list[0].values);
-					free(var_list[1].values);
+					free(var_list[0].arr);
+					free(var_list[1].arr);
 					sat(solver);
 					return;
 				}
+				if (solver->variables[var] != vundef) break;
 			}
 		}
-		free(var_list[0].values);
-		free(var_list[1].values);
+		free(var_list[0].arr);
+		free(var_list[1].arr);
 	}
 
 	if (change) {
@@ -638,7 +645,7 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 	if (new.length == 1) {
 		printf("(u %d)", new.values[0]);
 		fflush(stdout);
-		extend_clause(&solver->units, new.values[0]);
+		extend_int_arr(&solver->units, new.values[0]);
 	} else {
 		update_vsids(solver, new);
 		extend_clauses(&solver->problem, new);
@@ -681,9 +688,9 @@ void allocate_data(struct solver* solver) {
 	memset(solver->phase, solver->len_variables+1, sizeof(bool));
 
 	for (int i = 0; i < 2; i++){
-		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct clause));
+		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct int_arr));
 		for (int j = 0; j < solver->len_variables+1; j++) {
-			solver->watched_clauses[i][j] = (struct clause){NULL, 0};
+			solver->watched_clauses[i][j] = nil_int_arr;
 		}
 	}
 
@@ -693,19 +700,19 @@ void allocate_data(struct solver* solver) {
 	solver->ignore = malloc((solver->len_variables+1)*sizeof(bool));
 	solver->remove = malloc((solver->len_variables+1)*sizeof(bool));
 
-	solver->trail.values = malloc((solver->len_variables-solver->variables_eliminated) * sizeof(value));
+	solver->trail.arr = malloc((solver->len_variables-solver->variables_eliminated) * sizeof(value));
 }
 
 struct solver* solve(FILE* file) {
 
 	struct solver* solver = malloc(sizeof(struct solver));
 
-	struct clause  nilclause  = {NULL, 0};
+	struct int_arr nilarr     = {NULL, 0};
 	struct clauses nilclauses = {NULL, 0};
 
 	solver->solved				= false;
 	solver->problem				= nilclauses;
-	solver->units				= nilclause;
+	solver->units				= nilarr;
 	solver->variables			= NULL;
 	solver->len_variables		= 0;
 	solver->reason				= NULL;
@@ -713,8 +720,8 @@ struct solver* solve(FILE* file) {
 	solver->watched_clauses[0]	= NULL;
 	solver->watched_clauses[1] 	= NULL;
 	solver->queue				= 0;
-	solver->trail				= nilclause;
-	solver->decisions			= nilclause;
+	solver->trail				= nilarr;
+	solver->decisions			= nilarr;
 	solver->solutions			= 0;
 	solver->conflicts 			= 0;
 	solver->minimized			= 0;

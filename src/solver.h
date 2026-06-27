@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "clause.h"
+#include "int_arr.h"
 
 struct solver {
 	bool solved;
@@ -24,7 +25,7 @@ struct solver {
 
 	int problem_len;
 	struct clauses problem;
-	struct clause units;
+	struct int_arr units;
 	// TODO: binary clauses - built into the watched list?
 
 	double* vsids;
@@ -43,14 +44,14 @@ struct solver {
 	// for each literal, a list of clauses
 	// the watched literals are always in [0] and [1] in the clause
 	// [0] is false, [1] is true
-	struct clause* watched_clauses[2];
+	struct int_arr* watched_clauses[2];
 
 	// index into trail of literals that need to be checked
 	int queue;
 
-	struct clause trail;
+	struct int_arr trail;
 
-	struct clause decisions;
+	struct int_arr decisions;
 
 	struct clauses preprocessing_stack;
 };

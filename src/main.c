@@ -1,13 +1,19 @@
 #include <stdio.h>
+#ifdef TEST
+#include <string.h>
+#endif
 
 #include "test.h"
 #include "solver.h"
 
 int main(int argc, char** argv) {
 #ifdef TEST
-	test_all();
-
-#else
+	if (argc == 1 || strcmp(argv[1], "--test") == 0) {
+		test_all();
+		return 0;
+	}
+	printf("\nCOMPILED FOR TESTING\n\n");
+#endif
 	FILE* file;
 	if (argc == 1) {
 		file = stdin;
@@ -17,6 +23,5 @@ int main(int argc, char** argv) {
 	// TODO: parse args, if any
 	destroy_solver(solve(file));
 
-#endif
 	return 0;
 }

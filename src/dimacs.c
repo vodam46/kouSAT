@@ -25,20 +25,20 @@ void parse(FILE* file, struct solver* solver) {
 
 	int loaded = 0;
 	bool ignore = false;
-	struct clause clause = {NULL, 0};
+	struct clause clause = nilclause;
 	while (loaded < solver->problem_len) {
 		value value = 0;
 		fscanf(file, "%d", &value);
 		if (value == 0) {
 			if (!ignore) {
 				if (clause.length == 1) {
-					extend_clause(&solver->units, clause.values[0]);
+				extend_int_arr(&solver->units, clause.values[0]);
 					free(clause.values);
 				} else extend_clauses(&solver->problem, clause);
 			}
 
 			ignore = false;
-			clause = (struct clause){NULL, 0};
+			clause = nilclause;
 			loaded++;
 		} else {
 			if (clause_contains(clause, value)) continue;

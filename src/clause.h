@@ -1,6 +1,8 @@
 #pragma once
 
+#include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 typedef int value;
 
@@ -11,6 +13,10 @@ enum vbool {
 };
 
 struct clause {
+	uint64_t mask;
+	bool learned;
+	// TODO: glue, other attributes
+
 	value* values;
 	int length;
 };
@@ -19,6 +25,10 @@ struct clauses {
 	struct clause* clauses;
 	int length;
 };
+
+extern struct clause nilclause;
+
+uint64_t get_mask(value);
 
 enum vbool get_vbool(value);
 void print_clause(struct clause);

@@ -11,7 +11,6 @@ specialized data structures
 	- clause(s) - for "metadata" (activity/glue level, literals hash (for subsumtion), locked, original problem)
 		- dont allocate a new pointer for the clause, put it "next to" the data - flexible array member
 	- watcher - clause index, blocked literal
-	- rename current clause struct to "int_arr"?
 
 
 read through the profiler, dont just run the program for no reason
@@ -24,6 +23,7 @@ args
 		- disable certain steps
 	- verbosity (obviously)
 	- all solutions
+	- disable certain features?
 
 
 more tests?
@@ -97,6 +97,11 @@ internal test files? (keep in the git repo)
 	git submodules?
 
 multi threading?
+	- search threads -> share clauses (<=certain length, glue, other usability metric?)
+	- preprocessor thread?
+		- vivification
+		- variable elimination
+		- probing? (up to a certain depth?)
 
 disconnected components
 
