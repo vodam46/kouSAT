@@ -441,9 +441,7 @@ void probe(struct solver* solver) {
 	seen[0] = malloc(solver->len_variables*sizeof(bool));
 	seen[1] = malloc(solver->len_variables*sizeof(bool));
 
-	enum vbool* values[2];
-	values[0] = malloc(solver->len_variables*sizeof(enum vbool));
-	values[1] = malloc(solver->len_variables*sizeof(enum vbool));
+	enum vbool* values = malloc(solver->len_variables*sizeof(enum vbool));
 
 	int round = 0;
 
@@ -453,8 +451,7 @@ probe_restart:
 	if (unit_propagate(solver) != -1) {
 		free(seen[0]);
 		free(seen[1]);
-		free(values[0]);
-		free(values[1]);
+		free(values);
 		unsat(solver);
 		return;
 	}
@@ -464,8 +461,7 @@ probe_restart:
 
 		free(seen[0]);
 		free(seen[1]);
-		free(values[0]);
-		free(values[1]);
+		free(values);
 		return;
 	}
 
@@ -480,9 +476,10 @@ probe_restart:
 		if (solver->variables[var_i] != vundef) continue;
 
 		bool check_extra = true;
-		struct int_arr var_list[2];
-		var_list[0] = nil_int_arr;
-		var_list[1] = nil_int_arr;
+		struct int_arr var_list = nil_int_arr;
+
+		// TODO: dont reassign every time? - how
+		for (int j = 0; j < solver->len_variables; j++) values[j] = vundef;
 
 		for (int p = 0; p < 2; p++) {
 			if (solver->variables[var_i] != vundef) continue;
@@ -498,23 +495,20 @@ probe_restart:
 				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
 					free(seen[0]);
 					free(seen[1]);
-					free(values[0]);
-					free(values[1]);
-					free(var_list[0].arr);
-					free(var_list[1].arr);
+					free(values);
+					free(var_list.arr);
 					sat(solver);
 					return;
 				}
 
-				for (int j = 0; j < solver->len_variables; j++) {
-					values[p][j] = vundef;
-				}
 				for (int j = solver->decisions.arr[0]; j < solver->trail.length; j++) {
 					int index = abs(solver->trail.arr[j]);
 					enum vbool val = solver->variables[index];
 					seen[val==vtrue][index-1] = true;
-					values[p][index-1] = val;
-					extend_int_arr(&var_list[p], index);
+					if (p == 0)
+						values[index-1] = val;
+					else if (p == 1 && values[index-1] == val)
+						extend_int_arr(&var_list, index);
 				}
 				undo_decision(solver);
 				continue;
@@ -541,58 +535,48 @@ probe_restart:
 			if (conflict != -1) {
 				free(seen[0]);
 				free(seen[1]);
-				free(values[0]);
-				free(values[1]);
-				free(var_list[0].arr);
-				free(var_list[1].arr);
+				free(values);
+				free(var_list.arr);
 				unsat(solver);
 				return;
 			}
 		}
 		if (check_extra) {
-			struct int_arr arr = var_list[0].length < var_list[1].length ? var_list[0] : var_list[1];
-			for (int index = 0; index < arr.length; index++) {
-				value var = arr.arr[index];
-				if (solver->variables[var] != vundef
-						|| values[0][var-1] == vundef
-						|| values[1][var-1] == vundef
-						|| values[0][var-1] != values[1][var-1]) continue;
+			for (int index = 0; index < var_list.length; index++) {
+				value var = var_list.arr[index];
 				int now = solver->trail.length;
-				if (values[0][var-1] == vtrue) {
+				if (values[var-1] == vtrue) {
 					extend_int_arr(&solver->units, var);
 					assign(solver, var, -1);
-				} else if (values[0][var-1] == vfalse) {
+				} else if (values[var-1] == vfalse) {
 					extend_int_arr(&solver->units, -var);
 					assign(solver, -var, -1);
 				}
+				values[var-1] = vundef;
+
 				change = true;
 				int conflict = unit_propagate(solver);
 				solver->probed += solver->trail.length - now;
 				if (conflict != -1) {
 					free(seen[0]);
 					free(seen[1]);
-					free(values[0]);
-					free(values[1]);
-					free(var_list[0].arr);
-					free(var_list[1].arr);
+					free(values);
+					free(var_list.arr);
 					unsat(solver);
 					return;
 				}
 				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
 					free(seen[0]);
 					free(seen[1]);
-					free(values[0]);
-					free(values[1]);
-					free(var_list[0].arr);
-					free(var_list[1].arr);
+					free(values);
+					free(var_list.arr);
 					sat(solver);
 					return;
 				}
 				if (solver->variables[var] != vundef) break;
 			}
 		}
-		free(var_list[0].arr);
-		free(var_list[1].arr);
+		free(var_list.arr);
 	}
 
 	if (change) {
@@ -602,8 +586,7 @@ probe_restart:
 	}
 	free(seen[0]);
 	free(seen[1]);
-	free(values[0]);
-	free(values[1]);
+	free(values);
 }
 
 int luby(int i) {

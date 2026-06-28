@@ -3,5 +3,6 @@ dep
 obj
 gmon.out
 valgrind*
+callgrind*
 files
-gprof.png
+*.png

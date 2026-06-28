@@ -64,6 +64,7 @@ void remove_clause_unord(struct clause* clause, unsigned index) {
 		free(clause->values);
 		clause->values = NULL;
 	}
+	// TODO: improve this - is there some way to keep O(1) complexity?
 	for (int i = 0; i < clause->length; i++)
 		if (get_mask(clause->values[i]) == mv)
 			return;

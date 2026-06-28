@@ -119,9 +119,8 @@ proper debug information
 
 built in checker for testing
 
-callgirnd with kcachegrind for profiling
-
 start optimizing - preprocessing takes up suspiciously long
+	- nqueens cnf - self subsumtion
 
 NULL checks on memory allocations
 
@@ -146,8 +145,14 @@ fix printing - in the style of kissat? (but more clear which is which)
 
 regularly scheduled probing
 
-speed up probing - checking each variable is slow
+speed up probing - only add to int_arr those that are actually propagated
 
 memcheck - there might be a memory leak again - preprocessing, occurence lists
 
 read through microsat - https://github.com/marijnheule/microsat
+
+clause literals hash - O(n) complexity when removing literals - how to speed it up?
+	- dont recalculate every time?
+
+clause deletion - use glues?
+	- make it work at first, can always improve it later
