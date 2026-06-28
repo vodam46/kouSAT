@@ -366,15 +366,17 @@ void minimize(struct solver* solver, struct clause* clause) {
 	// TODO: speed this up - dont go through the whole trail every time
 	memset(solver->ignore, false, (solver->len_variables+1)*sizeof(bool));
 	memset(solver->remove, false, (solver->len_variables+1)*sizeof(bool));
+
 	for (int i = 0; i < ret.length; i++) solver->ignore[abs(ret.values[i])] = true;
-	for (int lit_i = 0; lit_i < solver->trail.length; lit_i++) {
+	for (int i = 0; i < solver->decisions.arr[0]; i++) {
+		int index = abs(solver->trail.arr[i]);
+		solver->ignore[index] = true;
+		solver->remove[index] = true;
+	}
+
+	for (int lit_i = solver->decisions.arr[0]; lit_i < solver->trail.length; lit_i++) {
 		value l = solver->trail.arr[lit_i];
 		int index = abs(l);
-		if (solver->level[index] == 0) {
-			solver->ignore[index] = true;
-			solver->remove[index] = true;
-			continue;
-		}
 		if (solver->reason[index] == -1) continue;
 		struct clause reason = solver->problem.clauses[solver->reason[index]];
 		bool can_ignore = true;
@@ -389,6 +391,25 @@ void minimize(struct solver* solver, struct clause* clause) {
 			solver->remove[index] = true;
 		}
 	}
+
+	// self subsuming resolution on conflict clause
+	// https://www.msoos.org/2010/08/on-the-fly-self-subsuming-resolution/
+	// TODO: on 2bitadd_10 this makes it actually slower
+	for (int i = 0; i < ret.length; i++) {
+		value l = ret.values[i];
+		if (solver->remove[abs(l)]) continue;
+		struct int_arr arr = solver->watched_clauses[l<0][abs(l)];
+		for (int j = 0; j < arr.length; j++) {
+			struct clause cl = solver->problem.clauses[arr.arr[j]];
+			if (cl.length != 2) continue;
+			value other = cl.values[0] == -l ? cl.values[1] : cl.values[0];
+			if (!solver->remove[abs(other)] && solver->ignore[abs(other)] && clause_contains(ret, other)) {
+				solver->remove[abs(l)] = true;
+				break;
+			}
+		}
+	}
+
 	for (int i = 0; i < ret.length; i++) {
 		if (solver->remove[abs(ret.values[i])]) {
 			solver->minimized++;

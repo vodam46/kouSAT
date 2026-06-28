@@ -156,3 +156,5 @@ clause literals hash - O(n) complexity when removing literals - how to speed it 
 
 clause deletion - use glues?
 	- make it work at first, can always improve it later
+
+intree probing
