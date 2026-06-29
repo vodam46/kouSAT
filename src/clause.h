@@ -38,6 +38,8 @@ void extend_clause(struct clause*, value);
 void remove_clause_unord(struct clause*, unsigned);
 void reduce_clause(struct clause*, unsigned);
 
+void recalculate_mask(struct clause*);
+
 void extend_clauses(struct clauses*, struct clause);
 void remove_clauses_unord(struct clauses*, unsigned);
 

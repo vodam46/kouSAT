@@ -395,11 +395,15 @@ void minimize(struct solver* solver, struct clause* clause) {
 	// self subsuming resolution on conflict clause
 	// https://www.msoos.org/2010/08/on-the-fly-self-subsuming-resolution/
 	// TODO: on 2bitadd_10 this makes it actually slower
+	// is it just luck?
+	// TODO: update this once binary clauses are natively within watchlists
 	for (int i = 0; i < ret.length; i++) {
 		value l = ret.values[i];
 		if (solver->remove[abs(l)]) continue;
 		struct int_arr arr = solver->watched_clauses[l<0][abs(l)];
 		for (int j = 0; j < arr.length; j++) {
+			// TODO: this part takes way too long!!!
+			// is it because its only usable with binary clauses built into watchlists?
 			struct clause cl = solver->problem.clauses[arr.arr[j]];
 			if (cl.length != 2) continue;
 			value other = cl.values[0] == -l ? cl.values[1] : cl.values[0];
@@ -410,12 +414,17 @@ void minimize(struct solver* solver, struct clause* clause) {
 		}
 	}
 
-	for (int i = 0; i < ret.length; i++) {
-		if (solver->remove[abs(ret.values[i])]) {
-			solver->minimized++;
-			remove_clause_unord(&ret, i--);
-		}
+	int i = 0, r = 0;
+	uint64_t mask = 0;
+	for (; r < ret.length; r++) {
+		if (!solver->remove[abs(ret.values[r])]) {
+			mask |= get_mask(ret.values[r]);
+			ret.values[i++] = ret.values[r];
+		} else solver->minimized++;
 	}
+	reduce_clause(&ret, r-i);
+	ret.mask = mask;
+
 	*clause = ret;
 }
 

@@ -56,7 +56,6 @@ void extend_clause(struct clause* clause, value value) {
 
 void remove_clause_unord(struct clause* clause, unsigned index) {
 	clause->length--;
-	uint64_t mv = get_mask(clause->values[index]);
 	clause->values[index] = clause->values[clause->length];
 	if (clause->length) {
 		clause->values = realloc(clause->values, clause->length * sizeof(value));
@@ -64,24 +63,26 @@ void remove_clause_unord(struct clause* clause, unsigned index) {
 		free(clause->values);
 		clause->values = NULL;
 	}
-	// TODO: improve this - is there some way to keep O(1) complexity?
-	for (int i = 0; i < clause->length; i++)
-		if (get_mask(clause->values[i]) == mv)
-			return;
-	clause->mask &= ~mv;
 }
 
-// TODO: this function is currently unused
 void reduce_clause(struct clause* clause, unsigned length) {
 	clause->length -= length;
 	if (clause->length) {
 		clause->values = realloc(clause->values, clause->length * sizeof(value));
-		clause->mask = 0;
-		for (int i = 0; i < clause->length; i++)
-			clause->mask |= get_mask(clause->values[i]);
 	} else {
 		free(clause->values);
 		clause->values = NULL;
+	}
+}
+
+// TODO: different way of calculating clauses over 64 length?
+void recalculate_mask(struct clause* clause) {
+	clause->mask = 0;
+	for (int i = 0; i < clause->length; i++) {
+		clause->mask |= get_mask(clause->values[i]);
+		if (~clause->mask == 0) {
+			return;
+		}
 	}
 }
 
@@ -135,16 +136,20 @@ void resolve(struct clause* left, struct clause right, value literal) {
 			extend_clause(left, l);
 		}
 	}
+	recalculate_mask(left);
 }
 
 void remove_clause_value(struct clause* clause, value value) {
-	for (int i = 0; i < clause->length; i++)
-		if (clause->values[i] == value) {
-			remove_clause_unord(clause, i);
-			return;
+	int l = 0, r = 0;
+	uint64_t mask = 0;
+	for (; r < clause->length; r++) {
+		if (clause->values[r] != value) {
+			clause->values[l++] = clause->values[r];
+			mask |= get_mask(clause->values[r]);
 		}
-	// printf("clause does not contain %d\n", value);
-	// print_clause(*clause);
+	}
+	clause->mask = mask;
+	reduce_clause(clause, r-l);
 }
 
 bool subsumes(struct clause left, struct clause right) {

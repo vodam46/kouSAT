@@ -55,7 +55,7 @@ debug-build:  | obj dep bin
 debug: debug-build
 	gdb $(OUT_DEBUG)
 
-profile: CFLAGS := $(filter-out -O3,$(CFLAGS)) -Og
+profile: CFLAGS := $(filter-out -O3,$(CFLAGS)) -O0
 profile: CFLAGS := $(filter-out -pg,$(CFLAGS))
 profile: OUT=$(OUT_TEST)
 profile: $(OUT)
