@@ -464,16 +464,16 @@ analyze_loop:;
 
 void probe(struct solver* solver) {
 	// TODO: optimize same way as preprocessing?
+	// TODO: only literals that are in a 2 length clause
 	// TODO: clean this up
-	printf("probing\n");
+	printf("(P %d ", solver->probed);
+	fflush(stdout);
 
 	bool* seen[2];
 	seen[0] = malloc(solver->len_variables*sizeof(bool));
 	seen[1] = malloc(solver->len_variables*sizeof(bool));
 
 	enum vbool* values = malloc(solver->len_variables*sizeof(enum vbool));
-
-	int round = 0;
 
 probe_restart:
 	bool change = false;
@@ -483,15 +483,6 @@ probe_restart:
 		free(seen[1]);
 		free(values);
 		unsat(solver);
-		return;
-	}
-
-	if (round++ > 5) {
-		printf("probing round cutoff\n");
-
-		free(seen[0]);
-		free(seen[1]);
-		free(values);
 		return;
 	}
 
@@ -585,16 +576,8 @@ probe_restart:
 				values[var-1] = vundef;
 
 				change = true;
-				int conflict = unit_propagate(solver);
+				unit_propagate(solver);
 				solver->probed += solver->trail.length - now;
-				if (conflict != -1) {
-					free(seen[0]);
-					free(seen[1]);
-					free(values);
-					free(var_list.arr);
-					unsat(solver);
-					return;
-				}
 				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
 					free(seen[0]);
 					free(seen[1]);
@@ -609,6 +592,8 @@ probe_restart:
 		free(var_list.arr);
 	}
 
+	// looping actually makes it slower - look into why
+	// rewrite to use an int_arr?
 	if (change) {
 		memset(seen[0], false, solver->len_variables*sizeof(bool));
 		memset(seen[1], false, solver->len_variables*sizeof(bool));
@@ -617,6 +602,7 @@ probe_restart:
 	free(seen[0]);
 	free(seen[1]);
 	free(values);
+	printf("%d)", solver->probed);
 }
 
 int luby(int i) {
@@ -635,10 +621,9 @@ void restart(struct solver* solver) {
 	while (solver->decisions.length > 0) undo_decision(solver);
 }
 
-bool resolve_conflict(struct solver* solver, int conflict) {
+bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
 	if (++solver->conflicts%LUBY_MULT == 0) {
 		printf(".");
-		// printf("%d\n", solver->problem.length);
 		fflush(stdout);
 	}
 
@@ -654,6 +639,8 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 		unsat(solver);
 		return true;
 	}
+
+	*should_probe = new.length <= 2;
 
 	if (new.length == 1) {
 		printf("(u %d)", new.values[0]);
@@ -680,10 +667,18 @@ struct solver* cdcl(struct solver* solver) {
 	printf("searching\n");
 	init_vsids(solver);
 
+	bool should_probe = true;
+
 	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1)
-			if (resolve_conflict(solver, conflict)) return solver;
+			if (resolve_conflict(solver, conflict, &should_probe)) return solver;
+
+		if (should_probe && solver->decisions.length == 0) {
+			should_probe = false;
+			probe(solver);
+			if (solver->solved) return solver;
+		}
 
 		if (solver->trail.length == solver->len_variables - solver->variables_eliminated) sat(solver);
 		else assign_guess(solver, guess(solver));
@@ -757,9 +752,6 @@ struct solver* solve(FILE* file) {
 	if (solver->solved) return solver;
 
 	init_two_watched(solver);
-
-	probe(solver);
-	if (solver->solved) return solver;
 
 	print_stats(solver);
 	return cdcl(solver);

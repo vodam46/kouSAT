@@ -158,3 +158,7 @@ clause deletion - use glues?
 	- make it work at first, can always improve it later
 
 intree probing
+
+watchlists - native binary clauses - ternary? - blocked, other, type
+
+work on combining preprocessing, probing, and search
