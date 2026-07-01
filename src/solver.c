@@ -15,6 +15,7 @@
 #include "clause.h"
 #include "dimacs.h"
 #include "preprocess.h"
+#include "watch.h"
 
 #define LUBY_MULT (1<<7)
 
@@ -35,9 +36,9 @@ void print_watched(struct solver* solver) {
 	if (solver->watched_clauses[0] == NULL) return;
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		printf("-%d = ", i);
-		print_int_arr(solver->watched_clauses[0][i]);
+		print_watches(solver->watched_clauses[0][i]);
 		printf("%d = ", i);
-		print_int_arr(solver->watched_clauses[1][i]);
+		print_watches(solver->watched_clauses[1][i]);
 	}
 }
 
@@ -201,57 +202,96 @@ void assign(struct solver* solver, value value, int reason) {
 int unit_propagate(struct solver* solver) {
 	while (solver->queue < solver->trail.length) {
 		value check = solver->trail.arr[solver->queue++];
-		struct int_arr* clauses_i = &solver->watched_clauses[check<0][abs(check)];
+		struct watches* watches_p = &solver->watched_clauses[check<0][abs(check)];
+		struct watches watches = solver->watched_clauses[check<0][abs(check)];
 		int left, right;
 
-		for (left = right = 0; right < clauses_i->length;) {
-			int clause_i = clauses_i->arr[right];
-			struct clause clause = solver->problem.clauses[clause_i];
+		for (left = right = 0; right < watches.length;) {
+			struct watch watcher = watches.arr[right];
 
-			// make sure the literal is in [1]
-			if (clause.values[0] == -check) {
-				clause.values[0] = clause.values[1];
-				clause.values[1] = -check;
+			enum vbool var = solver->variables[abs(watcher.blocker)];
+			enum vbool block = get_vbool(watcher.blocker);
+
+			// TODO: separate into functions
+			switch (watcher.type) {
+				case long_clause:
+					if (var == block) {
+						watches.arr[left++] = watcher;
+						right++;
+						continue;
+					}
+
+					struct clause clause = solver->problem.clauses[watcher.index];
+
+					// make sure the literal is in [1]
+					if (clause.values[0] == -check) {
+						clause.values[0] = clause.values[1];
+						clause.values[1] = -check;
+					}
+					right++;
+
+					// first is true, can skip
+					value first = clause.values[0];
+					struct watch w = create_watcher(clause, watcher.index, first);
+					if (solver->variables[abs(first)] == get_vbool(first)) {
+						watches.arr[left++] = w;
+						continue;
+					}
+
+					// look for a new watched literal
+					int index = 0;
+					for (int i = 2; i < clause.length; i++) {
+						value v = clause.values[i];
+						enum vbool val = solver->variables[abs(v)];
+
+						if (val == vundef) index = i;
+						else if (val == get_vbool(v)) { index = i; break; }
+					}
+
+					if (index) {
+						value v = clause.values[index];
+						clause.values[index] = clause.values[1];
+						clause.values[1] = v;
+						extend_watches(&solver->watched_clauses[v>0][abs(v)], w);
+						continue;
+					}
+
+					// couldnt find any, is unit
+					watches.arr[left++] = w;
+					if (solver->variables[abs(first)] != vundef) {
+						while (right < watches.length)
+							watches.arr[left++] = watches.arr[right++];
+						reduce_watches(watches_p, right-left);
+						return w.index;
+					} else {
+						assign(solver, first, w.index);
+					}
+					break;
+
+				case binary_clause:
+					// first is undefined, assign it immediately
+					if (var == vundef) {
+						watches.arr[left++] = watcher;
+						right++;
+						assign(solver, watcher.blocker, watcher.index);
+
+					// is true, can continue
+					} else if (var == block) {
+						watches.arr[left++] = watcher;
+						right++;
+
+					// is conflict
+					} else {
+						while (right < watches.length)
+							watches.arr[left++] = watches.arr[right++];
+						reduce_watches(watches_p, right-left);
+						return watcher.index;
+					}
+					break;
 			}
-			right++;
 
-			// first is true, can skip
-			value first = clause.values[0];
-			if (solver->variables[abs(first)] == get_vbool(first)) {
-				clauses_i->arr[left++] = clause_i;
-				continue;
-			}
-
-			// look for a new watched literal
-			int index = 0;
-			for (int i = 2; i < clause.length; i++) {
-				value v = clause.values[i];
-				enum vbool val = solver->variables[abs(v)];
-
-				if (val == vundef) index = i;
-				else if (val == get_vbool(v)) { index = i; break; }
-			}
-
-			if (index) {
-				value v = clause.values[index];
-				clause.values[index] = clause.values[1];
-				clause.values[1] = v;
-				extend_int_arr(&solver->watched_clauses[v>0][abs(v)], clause_i);
-				continue;
-			}
-
-			// couldnt find any, is unit
-			clauses_i->arr[left++] = clause_i;
-			if (solver->variables[abs(clause.values[0])] != vundef) {
-				while (right < clauses_i->length)
-					clauses_i->arr[left++] = clauses_i->arr[right++];
-				reduce_int_arr(clauses_i, right-left);
-				return clause_i;
-			} else {
-				assign(solver, first, clause_i);
-			}
 		}
-		reduce_int_arr(clauses_i, right-left);
+		reduce_watches(watches_p, right-left);
 	}
 
 	return -1;
@@ -314,7 +354,7 @@ void add_watched_clause(struct solver* solver, int index) {
 	struct clause clause = solver->problem.clauses[index];
 	for (int j = 0; j < 2; j++) {
 		value v = clause.values[j];
-		extend_int_arr(&solver->watched_clauses[v>0][abs(v)], index);
+		extend_watches(&solver->watched_clauses[v>0][abs(v)], create_watcher(clause, index, clause.values[1-j]));
 	}
 }
 
@@ -362,6 +402,7 @@ int count_cur_level(struct solver* solver, struct clause clause) {
 
 void minimize(struct solver* solver, struct clause* clause) {
 	struct clause ret = *clause;
+	int length = ret.length;
 
 	// TODO: speed this up - dont go through the whole trail every time
 	memset(solver->ignore, false, (solver->len_variables+1)*sizeof(bool));
@@ -387,6 +428,8 @@ void minimize(struct solver* solver, struct clause* clause) {
 			}
 		}
 		if (can_ignore) {
+			if (solver->ignore[index] && !solver->remove[index])
+				length--;
 			solver->ignore[index] = true;
 			solver->remove[index] = true;
 		}
@@ -394,23 +437,21 @@ void minimize(struct solver* solver, struct clause* clause) {
 
 	// self subsuming resolution on conflict clause
 	// https://www.msoos.org/2010/08/on-the-fly-self-subsuming-resolution/
-	// TODO: on 2bitadd_10 this makes it actually slower
-	// is it just luck?
-	// TODO: update this once binary clauses are natively within watchlists
-	for (int i = 0; i < ret.length; i++) {
-		value l = ret.values[i];
-		if (solver->remove[abs(l)]) continue;
-		struct int_arr arr = solver->watched_clauses[l<0][abs(l)];
-		for (int j = 0; j < arr.length; j++) {
-			// TODO: this part takes way too long!!!
-			// is it because its only usable with binary clauses built into watchlists?
-			struct clause cl = solver->problem.clauses[arr.arr[j]];
-			if (cl.length != 2) continue;
-			value other = cl.values[0] == -l ? cl.values[1] : cl.values[0];
-			if (!solver->remove[abs(other)] && solver->ignore[abs(other)] && clause_contains(ret, other)) {
-				solver->remove[abs(l)] = true;
-				break;
+	if (length > 1) {
+		for (int i = 0; i < ret.length; i++) {
+			value l = ret.values[i];
+			if (solver->remove[abs(l)]) continue;
+			struct watches arr = solver->watched_clauses[l<0][abs(l)];
+			for (int j = 0; j < arr.length; j++) {
+				struct watch w = arr.arr[j];
+				if (w.type != binary_clause) continue;
+				if (!solver->remove[abs(w.blocker)] && solver->ignore[abs(w.blocker)] && clause_contains(ret, w.blocker)) {
+					solver->remove[abs(l)] = true;
+					length--;
+					break;
+				}
 			}
+			if (length == 1) break;
 		}
 	}
 
@@ -698,7 +739,7 @@ void allocate_data(struct solver* solver) {
 	for (int i = 0; i < 2; i++){
 		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct int_arr));
 		for (int j = 0; j < solver->len_variables+1; j++) {
-			solver->watched_clauses[i][j] = nil_int_arr;
+			solver->watched_clauses[i][j] = nil_watches;
 		}
 	}
 

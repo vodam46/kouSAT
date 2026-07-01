@@ -358,6 +358,7 @@ void preprocess(struct solver* solver) {
 
 	// TODO: backwards subsumtion?
 	// check if a newly added clause is subsumed by an already added clause
+	// TODO: separate into functions
 	int round = 0;
 	do {
 		round++;

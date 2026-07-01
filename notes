@@ -33,6 +33,8 @@ more tests?
 	external script
 	more test files - cnf generators
 
+	comment in the file?
+
 
 clear all the todos
 
@@ -83,8 +85,6 @@ implement everything minisat does
 
 http://www.satlive.org/
 
-two watched literals - special watcher struct (store the opposite literal)
-
 random (deterministic?) assignments
 
 when to schedule inprocessing?
@@ -114,6 +114,7 @@ move *all* allocation to allocate_data
 clause vivification
 
 reduce the number of memory alloc's
+	- reallocs in clause creation -> not +1, but *1.5?
 
 proper debug information
 
@@ -143,22 +144,17 @@ https://www.msoos.org/2010/05/on-failed-literal-probing/
 
 fix printing - in the style of kissat? (but more clear which is which)
 
-regularly scheduled probing
-
-speed up probing - only add to int_arr those that are actually propagated
-
 memcheck - there might be a memory leak again - preprocessing, occurence lists
 
 read through microsat - https://github.com/marijnheule/microsat
 
-clause literals hash - O(n) complexity when removing literals - how to speed it up?
-	- dont recalculate every time?
-
 clause deletion - use glues?
 	- make it work at first, can always improve it later
+		- delete every learned (for now), then add some heuristic for clause deletion
 
-intree probing
-
-watchlists - native binary clauses - ternary? - blocked, other, type
+watchlists - native ternary clauses? - some other clause type?
 
 work on combining preprocessing, probing, and search
+
+split long functions into shorter helper functions
+	- unit_propagate, preprocess, minimize, probe, maybe_eliminate
