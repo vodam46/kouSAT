@@ -40,6 +40,14 @@ void reduce_watches(struct watches* watches, int length) {
 	}
 }
 
+void remove_watches_index(struct watches* watches, int index) {
+	for (int i = 0; i < watches->length; i++)
+		if (watches->arr[i].index == index) {
+			remove_watches_unord(watches, i);
+			return;
+		}
+}
+
 void print_watches(struct watches watches) {
 	for (int i = 0; i < watches.length; i++) {
 		struct watch watch = watches.arr[i];

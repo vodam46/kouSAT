@@ -25,5 +25,6 @@ struct watch create_watcher(struct clause, int, value);
 void extend_watches(struct watches*, struct watch);
 void remove_watches_unord(struct watches*, int);
 void reduce_watches(struct watches*, int);
+void remove_watches_index(struct watches*, int);
 
 void print_watches(struct watches);

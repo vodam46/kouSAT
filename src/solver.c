@@ -511,6 +511,7 @@ void probe(struct solver* solver) {
 	// TODO: optimize same way as preprocessing?
 	// TODO: only literals that are in a 2 length clause
 	// TODO: clean this up
+	// TODO: dont allocate all the time
 	printf("(P %d ", solver->probed);
 	fflush(stdout);
 
@@ -639,11 +640,7 @@ probe_restart:
 
 	// looping actually makes it slower - look into why
 	// rewrite to use an int_arr?
-	if (change) {
-		memset(seen[0], false, solver->len_variables*sizeof(bool));
-		memset(seen[1], false, solver->len_variables*sizeof(bool));
-		goto probe_restart;
-	}
+	if (change) goto probe_restart;
 	free(seen[0]);
 	free(seen[1]);
 	free(values);
@@ -708,11 +705,69 @@ bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
 	return false;
 }
 
+// TODO: this code sucks, fix this - separate into functions
+// remove_watched_clause, unwatch (?), is_toplevel_satisfied, ...
+void clean_database(struct solver* solver) {
+	printf("(C %d ", solver->problem.length);
+	fflush(stdout);
+	for (int i = solver->problem.length-1; i >= 0; i--) {
+		struct clause c = solver->problem.clauses[i];
+
+		// if clause is original -> continue
+		if (!c.learned) {
+			bool remove = false;
+			for (int j = 0; j < c.length; j++) {
+				value v = c.values[j];
+				if (solver->variables[abs(v)] == get_vbool(v) && solver->level[abs(v)] == 0) {
+					remove = true;
+					break;
+				}
+			}
+			if (!remove)
+				continue;
+		} else {
+			// if clause is reason for [0] -> continue
+			if (solver->reason[abs(c.values[0])] == i) continue;
+			if (solver->reason[abs(c.values[1])] == i) continue;
+		}
+
+		// delete watches
+		for (int j = 0; j < 2; j++) {
+			value v = c.values[j];
+			remove_watches_index(&solver->watched_clauses[v>0][abs(v)], i);
+		}
+
+		if (i != solver->problem.length-1) {
+			struct clause new = solver->problem.clauses[solver->problem.length-1];
+
+			for (int j = 0; j < 2; j++) {
+				value v = new.values[j];
+				remove_watches_index(&solver->watched_clauses[v>0][abs(v)], solver->problem.length-1);
+			}
+
+			remove_clauses_unord(&solver->problem, i);
+
+			add_watched_clause(solver, i);
+
+			if (solver->reason[abs(new.values[0])] == solver->problem.length)
+				solver->reason[abs(new.values[0])] = i;
+			if (solver->reason[abs(new.values[1])] == solver->problem.length)
+				solver->reason[abs(new.values[1])] = i;
+
+		} else {
+			remove_clauses_unord(&solver->problem, i);
+		}
+	}
+	printf("%d)", solver->problem.length);
+}
+
 struct solver* cdcl(struct solver* solver) {
 	printf("searching\n");
 	init_vsids(solver);
 
+	// TODO: rewrite these as solver attributes
 	bool should_probe = true;
+	int allowed = solver->problem.length*2;
 
 	while (!solver->solved) {
 		int conflict;
@@ -723,6 +778,11 @@ struct solver* cdcl(struct solver* solver) {
 			should_probe = false;
 			probe(solver);
 			if (solver->solved) return solver;
+		}
+
+		if (solver->problem.length > allowed) {
+			allowed = solver->problem.length*2;
+			clean_database(solver);
 		}
 
 		if (solver->trail.length == solver->len_variables - solver->variables_eliminated) sat(solver);

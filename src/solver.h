@@ -18,6 +18,7 @@ struct solver {
 	int conflicts_until_restart;
 
 	// statistics
+	// TODO: xmacro
 	int minimized;
 	int clauses_removed;
 	int clauses_reduced;
