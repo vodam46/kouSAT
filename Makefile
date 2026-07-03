@@ -11,7 +11,7 @@ FILE=
 
 sources = $(subst src/,,$(wildcard src/*.c))
 
-.PHONY: clean count debug debug-build default run valgrind test check
+.PHONY: clean count debug debug-build default run valgrind test check profile
 
 default: $(OUT)
 build: $(OUT)
@@ -54,6 +54,11 @@ debug-build:  | obj dep bin
 
 debug: debug-build
 	gdb $(OUT_DEBUG)
+
+gprof: CFLAGS := $(filter-out -O3,$(CFLAGS)) -O0 -pg
+gprof: test
+gprof:
+	gprof ./bin/kouSAT-test | gprof2dot -n0 -e0| dot -Tpng -o gprof.png
 
 profile: CFLAGS := $(filter-out -O3,$(CFLAGS)) -O0
 profile: CFLAGS := $(filter-out -pg,$(CFLAGS))

@@ -240,12 +240,16 @@ int unit_propagate(struct solver* solver) {
 
 					// look for a new watched literal
 					int index = 0;
-					for (int i = 2; i < clause.length; i++) {
+					int level = INT_MAX;
+					for (int i = 2; level > 0 && i < clause.length; i++) {
 						value v = clause.values[i];
 						enum vbool val = solver->variables[abs(v)];
 
 						if (val == vundef) index = i;
-						else if (val == get_vbool(v)) { index = i; break; }
+						else if (val == get_vbool(v) && solver->level[abs(v)] < level) {
+							index = i;
+							level = solver->level[abs(v)];
+						}
 					}
 
 					if (index) {

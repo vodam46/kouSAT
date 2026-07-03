@@ -158,3 +158,10 @@ work on combining preprocessing, probing, and search
 
 split long functions into shorter helper functions
 	- unit_propagate, preprocess, minimize, probe, maybe_eliminate
+
+read through kitten (then kissat?) source code - some algorithmic improvements?
+	- stack struct
+	- store clauses on a stack?
+	- xor for other literal in unit_propagate
+
+clean up the api
