@@ -278,6 +278,7 @@ int unit_propagate(struct solver* solver) {
 						watches.arr[left++] = watcher;
 						right++;
 						assign(solver, watcher.blocker, watcher.index);
+						// TODO: swap the literals in clause so the blocker is in [0]?
 
 					// is true, can continue
 					} else if (var == block) {
@@ -361,6 +362,13 @@ void add_watched_clause(struct solver* solver, int index) {
 		extend_watches(&solver->watched_clauses[v>0][abs(v)], create_watcher(clause, index, clause.values[1-j]));
 	}
 }
+void remove_watched_clause(struct solver* solver, int index) {
+	struct clause clause = solver->problem.clauses[index];
+	for (int j = 0; j < 2; j++) {
+		value v = clause.values[j];
+		remove_watches_index(&solver->watched_clauses[v>0][abs(v)], index);
+	}
+}
 
 void init_two_watched(struct solver* solver) {
 	for (int i = 0; i < solver->problem.length; i++) {
@@ -442,7 +450,7 @@ void minimize(struct solver* solver, struct clause* clause) {
 	// self subsuming resolution on conflict clause
 	// https://www.msoos.org/2010/08/on-the-fly-self-subsuming-resolution/
 	if (length > 1) {
-		for (int i = 0; i < ret.length; i++) {
+		for (int i = 1; i < ret.length; i++) {
 			value l = ret.values[i];
 			if (solver->remove[abs(l)]) continue;
 			struct watches arr = solver->watched_clauses[l<0][abs(l)];
@@ -490,15 +498,22 @@ analyze_loop:;
 		if (count > 1) goto analyze_loop;
 	}
 
-	minimize(solver, &ret);
-
-	// TODO: optimize
+	// TODO: do this during resolution?
+	// TODO: sort the literals according to their level?
 	for (int i = 1; i < ret.length; i++) {
 		value l = ret.values[i];
 		if (solver->level[abs(l)] == solver->decisions.length) {
 			ret.values[i] = ret.values[0];
 			ret.values[0] = l;
-		} else if (solver->level[abs(l)] > solver->level[abs(ret.values[1])]) {
+			break;
+		}
+	}
+
+	minimize(solver, &ret);
+
+	for (int i = 2; i < ret.length; i++) {
+		value l = ret.values[i];
+		if (solver->level[abs(l)] > solver->level[abs(ret.values[1])]) {
 			ret.values[i] = ret.values[1];
 			ret.values[1] = l;
 		}
@@ -707,6 +722,7 @@ bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
 
 // TODO: this code sucks, fix this - separate into functions
 // remove_watched_clause, unwatch (?), is_toplevel_satisfied, ...
+// TODO: keep cleaned clauses for probing?
 void clean_database(struct solver* solver) {
 	printf("(C %d ", solver->problem.length);
 	fflush(stdout);
@@ -714,37 +730,35 @@ void clean_database(struct solver* solver) {
 		struct clause c = solver->problem.clauses[i];
 
 		// if clause is original -> continue
-		if (!c.learned) {
-			bool remove = false;
-			for (int j = 0; j < c.length; j++) {
-				value v = c.values[j];
-				if (solver->variables[abs(v)] == get_vbool(v) && solver->level[abs(v)] == 0) {
-					remove = true;
-					break;
-				}
+		bool toplevel_satisfied = false;
+		for (int j = 0; j < c.length; j++) {
+			value v = c.values[j];
+			if (solver->variables[abs(v)] == get_vbool(v) && solver->level[abs(v)] == 0) {
+				toplevel_satisfied = true;
+				break;
 			}
-			if (!remove)
+		}
+
+		if (!toplevel_satisfied) {
+			if (!c.learned) {
 				continue;
-		} else {
-			// if clause is reason for [0] -> continue
-			if (solver->reason[abs(c.values[0])] == i) continue;
-			if (solver->reason[abs(c.values[1])] == i) continue;
+			} else {
+				// keep binary clauses
+				if (c.length == 2) continue;
+
+				// if clause is reason for [0] -> continue
+				if (solver->reason[abs(c.values[0])] == i) continue;
+				if (solver->reason[abs(c.values[1])] == i) continue;
+			}
 		}
 
 		// delete watches
-		for (int j = 0; j < 2; j++) {
-			value v = c.values[j];
-			remove_watches_index(&solver->watched_clauses[v>0][abs(v)], i);
-		}
+		remove_watched_clause(solver, i);
 
 		if (i != solver->problem.length-1) {
 			struct clause new = solver->problem.clauses[solver->problem.length-1];
 
-			for (int j = 0; j < 2; j++) {
-				value v = new.values[j];
-				remove_watches_index(&solver->watched_clauses[v>0][abs(v)], solver->problem.length-1);
-			}
-
+			remove_watched_clause(solver, solver->problem.length-1);
 			remove_clauses_unord(&solver->problem, i);
 
 			add_watched_clause(solver, i);
@@ -774,6 +788,7 @@ struct solver* cdcl(struct solver* solver) {
 		while ((conflict = unit_propagate(solver)) != -1)
 			if (resolve_conflict(solver, conflict, &should_probe)) return solver;
 
+		// TODO: less probing, slows down solver too much
 		if (should_probe && solver->decisions.length == 0) {
 			should_probe = false;
 			probe(solver);

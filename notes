@@ -149,15 +149,23 @@ memcheck - there might be a memory leak again - preprocessing, occurence lists
 read through microsat - https://github.com/marijnheule/microsat
 
 clause deletion - use glues?
-	- make it work at first, can always improve it later
-		- delete every learned (for now), then add some heuristic for clause deletion
+	- heuristic for deletion
+	- 3 categories for glue deletion - test different numbers/heuristics
+		- never delete - 2 glue?
+		- keep if useful - 3-6 glue
+		- always delete - 7+
+
+some inprocessing with learned clauses
+	- subsumtion - dont delete if subsumes original clause
+	- self subsuming resolution (shouldnt minimization stop this?)
+	- variable elimination?
 
 watchlists - native ternary clauses? - some other clause type?
 
 work on combining preprocessing, probing, and search
 
 split long functions into shorter helper functions
-	- unit_propagate, preprocess, minimize, probe, maybe_eliminate
+	- unit_propagate, preprocess, minimize, probe, maybe_eliminate, clean_database
 
 read through kitten (then kissat?) source code - some algorithmic improvements?
 	- stack struct
@@ -165,3 +173,5 @@ read through kitten (then kissat?) source code - some algorithmic improvements?
 	- xor for other literal in unit_propagate
 
 clean up the api
+
+limit probing on large instances - bmc - takes too long
