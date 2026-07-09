@@ -175,3 +175,6 @@ read through kitten (then kissat?) source code - some algorithmic improvements?
 clean up the api
 
 limit probing on large instances - bmc - takes too long
+
+rewrite code to be independent of the way literals are represented?
+	- would have to be gradual, itll be hard to find all the little quirks

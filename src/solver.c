@@ -335,7 +335,7 @@ value guess(struct solver* solver) {
 		printf("guessing error\n");
 		exit(1);
 	}
-	return solver->phase ? var : -var;
+	return solver->phase[var] ? -var : var;
 }
 
 void assign_guess(struct solver* solver, value guess) {
@@ -813,7 +813,7 @@ void allocate_data(struct solver* solver) {
 	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
 	solver->reason = malloc((solver->len_variables+1) * sizeof(int));
 	solver->phase = malloc((solver->len_variables+1) * sizeof(bool));
-	memset(solver->phase, solver->len_variables+1, sizeof(bool));
+	memset(solver->phase, false, (solver->len_variables+1)*sizeof(bool));
 
 	for (int i = 0; i < 2; i++){
 		solver->watched_clauses[i] = malloc((solver->len_variables+1) * sizeof(struct int_arr));
