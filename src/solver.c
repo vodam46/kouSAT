@@ -195,7 +195,7 @@ void assign(struct solver* solver, value value, int reason) {
 	solver->variables[index] = val;
 	solver->level[index] = solver->decisions.length;
 	solver->reason[index] = reason;
-	solver->phase[index] = val == vfalse ? false : true;
+	solver->phase[index] = val;
 	solver->trail.arr[solver->trail.length++] = value;
 }
 
@@ -723,32 +723,56 @@ bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
 // TODO: this code sucks, fix this - separate into functions
 // remove_watched_clause, unwatch (?), is_toplevel_satisfied, ...
 // TODO: keep cleaned clauses for probing?
+// TODO: once conflict is found, compare new conflict clause with cleaned clauses?
+// - could be extremely slow, and not work
 void clean_database(struct solver* solver) {
 	printf("(C %d ", solver->problem.length);
 	fflush(stdout);
-	for (int i = solver->problem.length-1; i >= 0; i--) {
-		struct clause c = solver->problem.clauses[i];
 
-		// if clause is original -> continue
+	for (int i = solver->problem.length-1; i >= 0; i--) {
+		struct clause* c = &solver->problem.clauses[i];
+
 		bool toplevel_satisfied = false;
-		for (int j = 0; j < c.length; j++) {
-			value v = c.values[j];
-			if (solver->variables[abs(v)] == get_vbool(v) && solver->level[abs(v)] == 0) {
-				toplevel_satisfied = true;
-				break;
+		int l = 0, r = 0;
+		for (; r < c->length; r++) {
+			value v = c->values[r];
+			enum vbool var = solver->variables[abs(v)];
+			if (var != vundef && solver->level[abs(v)] == 0) {
+				enum vbool vbool = get_vbool(v);
+				if (var == vbool) {
+					toplevel_satisfied = true;
+					break;
+				}
+
+				if (r >= 2) continue;
+			}
+			c->values[l++] = c->values[r];
+		}
+		reduce_clause(c, r-l);
+
+		if (!toplevel_satisfied && r != l && c->length == 2) {
+			for (int j = 0; j < 2; j++) {
+				value v = c->values[j];
+				struct watches w = solver->watched_clauses[v>0][abs(v)];
+				for (int k = 0; k < w.length; k++) {
+					if (w.arr[k].index == i) {
+						w.arr[k].type = binary_clause;
+						break;
+					}
+				}
 			}
 		}
 
 		if (!toplevel_satisfied) {
-			if (!c.learned) {
+			if (!c->learned) {
 				continue;
 			} else {
 				// keep binary clauses
-				if (c.length == 2) continue;
+				if (c->length <= 2) continue;
 
 				// if clause is reason for [0] -> continue
-				if (solver->reason[abs(c.values[0])] == i) continue;
-				if (solver->reason[abs(c.values[1])] == i) continue;
+				if (solver->reason[abs(c->values[0])] == i) continue;
+				if (solver->reason[abs(c->values[1])] == i) continue;
 			}
 		}
 

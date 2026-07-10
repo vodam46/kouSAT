@@ -7,9 +7,9 @@
 typedef int value;
 
 enum vbool {
-	vtrue,
-	vfalse,
-	vundef
+	vtrue = 1,
+	vfalse = 0,
+	vundef = -1
 };
 
 struct clause {
