@@ -143,6 +143,11 @@ inprocessing
 https://www.msoos.org/2010/05/on-failed-literal-probing/
 
 fix printing - in the style of kissat? (but more clear which is which)
+	- every 0.1s print stats?
+	- conflicts, restarts, propagations, minimizations, pre/in processing stats,
+		constant variables, average clause stats (length, glue, ...),
+		probing (attempts, average probed (excluding the end of unsat instances?))
+		...
 
 memcheck - there might be a memory leak again - preprocessing, occurence lists
 

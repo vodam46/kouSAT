@@ -317,7 +317,7 @@ int qsort_preprocess(const void* l, const void* r) {
 
 // TODO: figure out some more complex preprocessing
 void preprocess(struct solver* solver) {
-	printf("preprocessing\n");
+	printf("c preprocessing\n");
 	for (int i = 0; i < solver->units.length; i++) {
 		value unit = solver->units.arr[i];
 		int index = abs(unit);
@@ -329,11 +329,11 @@ void preprocess(struct solver* solver) {
 			return;
 		}
 	}
-	printf("before %d\n", solver->problem.length);
+	printf("c before %d\n", solver->problem.length);
 	struct int_arr** occurs = build_occurence_list(solver->problem, solver->len_variables);
 
 	toplevel_propagate(solver, occurs, NULL, NULL, NULL);
-	printf("toplevel %d\n" ,solver->problem.length);
+	printf("c toplevel %d\n" ,solver->problem.length);
 	if (solver->problem.length == 0) {
 		sat(solver);
 		free_occurs(solver, occurs);
@@ -488,7 +488,7 @@ void preprocess(struct solver* solver) {
 	} while (!is_all_false(added, solver->problem.length));
 
 preprocess_end:;
-	printf("preprocessing %d rounds\n", round);
+	printf("c preprocessing %d rounds\n", round);
 	free_occurs(solver, occurs);
 
 	free(touched);
@@ -500,6 +500,6 @@ preprocess_end:;
 	free(marked[0]);
 	free(marked[1]);
 
-	printf("after  %d\n", solver->problem.length);
+	printf("c after  %d\n", solver->problem.length);
 	solver->problem_len = solver->problem.length;
 }

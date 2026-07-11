@@ -163,13 +163,13 @@ reassign_skip:;
 
 void print_stats(struct solver* solver) {
 	printf("\n");
-	printf("minimized %d\n", solver->minimized);
-	printf("conflicts %d\n", solver->conflicts);
-	printf("restarts %d\n", solver->restarts);
-	printf("clauses reduced %d\n", solver->clauses_reduced);
-	printf("clauses removed %d\n", solver->clauses_removed);
-	printf("variables eliminated %d\n", solver->variables_eliminated);
-	printf("probed %d\n", solver->probed);
+	printf("c minimized %d\n", solver->minimized);
+	printf("c conflicts %d\n", solver->conflicts);
+	printf("c restarts %d\n", solver->restarts);
+	printf("c clauses reduced %d\n", solver->clauses_reduced);
+	printf("c clauses removed %d\n", solver->clauses_removed);
+	printf("c variables eliminated %d\n", solver->variables_eliminated);
+	printf("c probed %d\n", solver->probed);
 }
 
 void unsat(struct solver* solver) {
@@ -550,6 +550,8 @@ probe_restart:
 	memset(seen[0], false, solver->len_variables*sizeof(bool));
 	memset(seen[1], false, solver->len_variables*sizeof(bool));
 
+	// TODO: go through all clauses - if theres a binary clause - mark the literals as "probeable"?
+
 	for (int var_i = 1; var_i < solver->len_variables+1; var_i++) {
 
 		if (seen[0][var_i-1] && seen[1][var_i-1]) continue;
@@ -732,6 +734,7 @@ void clean_database(struct solver* solver) {
 	for (int i = solver->problem.length-1; i >= 0; i--) {
 		struct clause* c = &solver->problem.clauses[i];
 
+		// TODO: only check if there were any new units?
 		bool toplevel_satisfied = false;
 		int l = 0, r = 0;
 		for (; r < c->length; r++) {
@@ -800,7 +803,7 @@ void clean_database(struct solver* solver) {
 }
 
 struct solver* cdcl(struct solver* solver) {
-	printf("searching\n");
+	printf("c searching\nc ");
 	init_vsids(solver);
 
 	// TODO: rewrite these as solver attributes

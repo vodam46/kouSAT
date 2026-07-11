@@ -7,7 +7,7 @@
 // TODO: make this different?
 // TODO: put some basic unit propagation in parsing
 void parse(FILE* file, struct solver* solver) {
-	printf("parsing\n");
+	printf("c parsing\n");
 	char* line = NULL;
 	size_t size = 0;
 	getline(&line, &size, file);
@@ -16,10 +16,10 @@ void parse(FILE* file, struct solver* solver) {
 	}
 
 	if (strncmp(line, "p cnf ", 6)) {
-		printf("invalid problem line\n\"%s\"", line);
+		printf("c invalid problem line\n\"%s\"", line);
 		exit(1);
 	}
-	printf("problem %s\n", line);
+	printf("c problem %s\n", line);
 	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
 	free(line);
 

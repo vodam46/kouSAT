@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
 		test_all();
 		return 0;
 	}
-	printf("\nCOMPILED FOR TESTING\n\n");
+	printf("\nc COMPILED FOR TESTING\n\n");
 #endif
 	FILE* file;
 	if (argc == 1) {
