@@ -506,12 +506,9 @@ char* unsat_files[] = {
 	NULL,
 };
 
-int total_minimized = 0;
-int total_conflicts = 0;
-int total_reduced = 0;
-int total_removed = 0;
-int total_eliminated = 0;
-int total_probed = 0;
+#define DECLARE(name, type) type total_##name = 0;
+STATISTICS(DECLARE)
+#undef DECLARE
 void test_files(char* files[], bool result) {
 	for (int i = 0; files[i]; i++) {
 		char* filename = files[i];
@@ -519,23 +516,20 @@ void test_files(char* files[], bool result) {
 
 		FILE* f = fopen(filename, "r");
 		struct solver* s = solve(f);
-		total_minimized += s->minimized;
-		total_conflicts += s->conflicts;
-		total_reduced += s->clauses_reduced;
-		total_removed += s->clauses_removed;
-		total_eliminated += s->variables_eliminated;
-		total_probed += s->probed;
-		printf("c total_minimized %d\n", total_minimized);
-		printf("c total_conflicts %d\n", total_conflicts);
-		printf("c total reduced %d\n", total_reduced);
-		printf("c total removed %d\n", total_removed);
-		printf("c total eliminated %d\n", total_eliminated);
-		printf("c total probed %d\n", total_probed);
 
-		printf("c success %b\n\n\n", s->result == result);
+		printf("c success %b\n", s->result == result);
 		assert(s->solved);
 		assert(s->result == result);
+
+#define INCREMENT_AND_PRINT(name, type) \
+		total_##name += s->statistics.name; \
+		printf("c total_" #name " %d\n", total_##name);
+		STATISTICS(INCREMENT_AND_PRINT)
+#undef INCREMENT_AND_PRINT
+
+
 		destroy_solver(s);
+		printf("\n\n");
 	}
 }
 

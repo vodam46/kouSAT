@@ -40,7 +40,7 @@ void preprocess_unit_propagate(
 		if (occurs[0][abs(v)].length == 0 && occurs[1][abs(v)].length == 0) continue;
 		for (int i = 0; i < occurs[v<0][abs(v)].length; i++) {
 			int index = occurs[v<0][abs(v)].arr[i];
-			solver->clauses_reduced++;
+			solver->statistics.clauses_reduced++;
 
 			if (strengthened != NULL)
 				strengthened[index] = true;
@@ -54,7 +54,7 @@ void preprocess_unit_propagate(
 		}
 
 		while (occurs[v>0][abs(v)].length) {
-			solver->clauses_removed++;
+			solver->statistics.clauses_removed++;
 			int index = occurs[v>0][abs(v)].arr[0];
 
 			if (arr != NULL)
@@ -124,7 +124,7 @@ void preprocess_subsume_clauses(
 		struct clause other = solver->problem.clauses[index];
 		if (index == ci) continue;
 		if(subsumes(clause, other)) {
-			solver->clauses_removed++;
+			solver->statistics.clauses_removed++;
 			strengthened[index] = strengthened[solver->problem.length-1];
 			for (int i = 0; i < other.length; i++)
 				touched[abs(other.values[i])] = true;
@@ -274,7 +274,7 @@ void preprocess_self_subsume(
 			if (index == ci) continue;
 			struct clause* other = &solver->problem.clauses[index];
 			if (subsumes(clause, *other)) {
-				solver->clauses_reduced++;
+				solver->statistics.clauses_reduced++;
 				for (int i = 0; i < other->length; i++)
 					touched[abs(other->values[i])] = true;
 				remove_clause_value(other, -p);
@@ -470,7 +470,7 @@ void preprocess(struct solver* solver) {
 				if (occurs[0][var].length > 50 && occurs[1][var].length > 50) continue;
 
 				if (maybe_eliminate(solver, var, occurs, touched, &added)) {
-					solver->variables_eliminated++;
+					solver->statistics.variables_eliminated++;
 					if (solver->solved) goto preprocess_end;
 					if (solver->problem.length == 0) {
 						free(arr);

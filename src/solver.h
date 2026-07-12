@@ -6,24 +6,14 @@
 #include "clause.h"
 #include "int_arr.h"
 #include "watch.h"
+#include "statistics.h"
 
 struct solver {
 	bool solved;
 	bool result;
 
-	int solutions;
-	int conflicts;
-
 	int restarts;
 	int conflicts_until_restart;
-
-	// statistics
-	// TODO: xmacro
-	int minimized;
-	int clauses_removed;
-	int clauses_reduced;
-	int variables_eliminated;
-	int probed;
 
 	int problem_len;
 	struct clauses problem;
@@ -55,6 +45,8 @@ struct solver {
 	struct int_arr decisions;
 
 	struct clauses preprocessing_stack;
+
+	struct statistics statistics;
 };
 
 struct solver* solve(FILE*);

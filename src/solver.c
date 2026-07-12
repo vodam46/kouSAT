@@ -16,6 +16,7 @@
 #include "dimacs.h"
 #include "preprocess.h"
 #include "watch.h"
+#include "statistics.h"
 
 #define LUBY_MULT (1<<7)
 
@@ -72,8 +73,8 @@ void print_occur(struct solver* solver, struct int_arr** occur) {
 
 void print_solver(struct solver* solver) {
 	printf("---\n");
-	printf("solutions %d\n", solver->solutions);
-	printf("conflicts %d\n", solver->conflicts);
+	printf("solutions %d\n", solver->statistics.solutions);
+	printf("conflicts %d\n", solver->statistics.conflicts);
 
 	printf("problem\n");
 	print_clauses(solver->problem);
@@ -156,27 +157,15 @@ reassign_skip:;
 	}
 
 
-	solver->solutions++;
+	solver->statistics.solutions++;
 	printf("\nv ");
 	print_variables(solver);
-}
-
-void print_stats(struct solver* solver) {
-	printf("\n");
-	printf("c minimized %d\n", solver->minimized);
-	printf("c conflicts %d\n", solver->conflicts);
-	printf("c restarts %d\n", solver->restarts);
-	printf("c clauses reduced %d\n", solver->clauses_reduced);
-	printf("c clauses removed %d\n", solver->clauses_removed);
-	printf("c variables eliminated %d\n", solver->variables_eliminated);
-	printf("c probed %d\n", solver->probed);
 }
 
 void unsat(struct solver* solver) {
 	solver->solved = true;
 	solver->result = false;
 
-	print_stats(solver);
 	printf("\ns UNSAT\n");
 }
 void sat(struct solver* solver) {
@@ -184,7 +173,6 @@ void sat(struct solver* solver) {
 	solver->result = true;
 
 	new_solution(solver);
-	print_stats(solver);
 	printf("\ns SAT\n");
 }
 
@@ -268,6 +256,7 @@ int unit_propagate(struct solver* solver) {
 						reduce_watches(watches_p, right-left);
 						return w.index;
 					} else {
+						solver->statistics.propagations++;
 						assign(solver, first, w.index);
 					}
 					break;
@@ -277,6 +266,7 @@ int unit_propagate(struct solver* solver) {
 					if (var == vundef) {
 						watches.arr[left++] = watcher;
 						right++;
+						solver->statistics.propagations++;
 						assign(solver, watcher.blocker, watcher.index);
 						// TODO: swap the literals in clause so the blocker is in [0]?
 
@@ -322,6 +312,8 @@ void update_vsids(struct solver* solver, struct clause new) {
 }
 
 value guess(struct solver* solver) {
+	// TODO: is this the proper place to put it?
+	solver->statistics.decisions++;
 	double score = -1;
 	value var = 0;
 	for (int i = 1; i < solver->len_variables+1; i++) {
@@ -473,7 +465,7 @@ void minimize(struct solver* solver, struct clause* clause) {
 		if (!solver->remove[abs(ret.values[r])]) {
 			mask |= get_mask(ret.values[r]);
 			ret.values[i++] = ret.values[r];
-		} else solver->minimized++;
+		} else solver->statistics.minimized++;
 	}
 	reduce_clause(&ret, r-i);
 	ret.mask = mask;
@@ -519,6 +511,7 @@ analyze_loop:;
 		}
 	}
 
+	solver->statistics.length_sum += ret.length;
 	return ret;
 }
 
@@ -527,7 +520,7 @@ void probe(struct solver* solver) {
 	// TODO: only literals that are in a 2 length clause
 	// TODO: clean this up
 	// TODO: dont allocate all the time
-	printf("(P %d ", solver->probed);
+	printf("(P %d ", solver->statistics.probed);
 	fflush(stdout);
 
 	bool* seen[2];
@@ -535,6 +528,8 @@ void probe(struct solver* solver) {
 	seen[1] = malloc(solver->len_variables*sizeof(bool));
 
 	enum vbool* values = malloc(solver->len_variables*sizeof(enum vbool));
+
+	solver->statistics.probing_attempts++;
 
 probe_restart:
 	bool change = false;
@@ -576,7 +571,7 @@ probe_restart:
 			int conflict = unit_propagate(solver);
 
 			if (conflict == -1) {
-				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
+				if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) {
 					free(seen[0]);
 					free(seen[1]);
 					free(values);
@@ -611,8 +606,8 @@ probe_restart:
 
 			conflict = unit_propagate(solver);
 
-			solver->probed += solver->trail.length - now;
-			solver->conflicts++;
+			solver->statistics.probed += solver->trail.length - now;
+			solver->statistics.conflicts++;
 			change = true;
 			check_extra = false;
 
@@ -640,8 +635,8 @@ probe_restart:
 
 				change = true;
 				unit_propagate(solver);
-				solver->probed += solver->trail.length - now;
-				if (solver->trail.length == solver->len_variables - solver->variables_eliminated) {
+				solver->statistics.probed += solver->trail.length - now;
+				if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) {
 					free(seen[0]);
 					free(seen[1]);
 					free(values);
@@ -661,7 +656,7 @@ probe_restart:
 	free(seen[0]);
 	free(seen[1]);
 	free(values);
-	printf("%d)", solver->probed);
+	printf("%d)", solver->statistics.probed);
 }
 
 int luby(int i) {
@@ -681,7 +676,7 @@ void restart(struct solver* solver) {
 }
 
 bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
-	if (++solver->conflicts%LUBY_MULT == 0) {
+	if (++solver->statistics.conflicts%LUBY_MULT == 0) {
 		printf(".");
 		fflush(stdout);
 	}
@@ -753,20 +748,25 @@ void clean_database(struct solver* solver) {
 		}
 		reduce_clause(c, r-l);
 
-		if (!toplevel_satisfied && r != l && c->length == 2) {
-			for (int j = 0; j < 2; j++) {
-				value v = c->values[j];
-				struct watches w = solver->watched_clauses[v>0][abs(v)];
-				for (int k = 0; k < w.length; k++) {
-					if (w.arr[k].index == i) {
-						w.arr[k].type = binary_clause;
-						break;
+		if (!toplevel_satisfied) {
+
+			if (r != l) {
+				solver->statistics.clauses_reduced += (r-l);
+
+				if (c->length == 2) {
+					for (int j = 0; j < 2; j++) {
+						value v = c->values[j];
+						struct watches w = solver->watched_clauses[v>0][abs(v)];
+						for (int k = 0; k < w.length; k++) {
+							if (w.arr[k].index == i) {
+								w.arr[k].type = binary_clause;
+								break;
+							}
+						}
 					}
 				}
 			}
-		}
 
-		if (!toplevel_satisfied) {
 			if (!c->learned) {
 				continue;
 			} else {
@@ -778,6 +778,8 @@ void clean_database(struct solver* solver) {
 				if (solver->reason[abs(c->values[1])] == i) continue;
 			}
 		}
+
+		solver->statistics.cleaned++;
 
 		// delete watches
 		remove_watched_clause(solver, i);
@@ -802,7 +804,7 @@ void clean_database(struct solver* solver) {
 	printf("%d)", solver->problem.length);
 }
 
-struct solver* cdcl(struct solver* solver) {
+void cdcl(struct solver* solver) {
 	printf("c searching\nc ");
 	init_vsids(solver);
 
@@ -813,13 +815,13 @@ struct solver* cdcl(struct solver* solver) {
 	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1)
-			if (resolve_conflict(solver, conflict, &should_probe)) return solver;
+			if (resolve_conflict(solver, conflict, &should_probe)) return;
 
 		// TODO: less probing, slows down solver too much
 		if (should_probe && solver->decisions.length == 0) {
 			should_probe = false;
 			probe(solver);
-			if (solver->solved) return solver;
+			if (solver->solved) return;
 		}
 
 		if (solver->problem.length > allowed) {
@@ -827,10 +829,10 @@ struct solver* cdcl(struct solver* solver) {
 			clean_database(solver);
 		}
 
-		if (solver->trail.length == solver->len_variables - solver->variables_eliminated) sat(solver);
+		if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) sat(solver);
 		else assign_guess(solver, guess(solver));
 	}
-	return solver;
+	return;
 }
 
 void allocate_data(struct solver* solver) {
@@ -855,7 +857,7 @@ void allocate_data(struct solver* solver) {
 	solver->ignore = malloc((solver->len_variables+1)*sizeof(bool));
 	solver->remove = malloc((solver->len_variables+1)*sizeof(bool));
 
-	solver->trail.arr = malloc((solver->len_variables-solver->variables_eliminated) * sizeof(value));
+	solver->trail.arr = malloc((solver->len_variables-solver->statistics.variables_eliminated) * sizeof(value));
 }
 
 struct solver* solve(FILE* file) {
@@ -877,17 +879,14 @@ struct solver* solve(FILE* file) {
 	solver->queue				= 0;
 	solver->trail				= nilarr;
 	solver->decisions			= nilarr;
-	solver->solutions			= 0;
-	solver->conflicts 			= 0;
-	solver->minimized			= 0;
 	solver->vsids				= NULL;
 	solver->phase				= NULL;
 	solver->problem_len			= 0;
 	solver->preprocessing_stack	= nilclauses;
-	solver->clauses_removed		= 0;
-	solver->clauses_reduced		= 0;
-	solver->variables_eliminated= 0;
-	solver->probed				= 0;
+
+#define INITIALIZE(name, type) solver->statistics.name = 0;
+	STATISTICS(INITIALIZE)
+#undef INITIALIZE
 
 	solver->restarts				= 0;
 	solver->conflicts_until_restart	= LUBY_MULT;
@@ -896,10 +895,20 @@ struct solver* solve(FILE* file) {
 	parse(file, solver);
 	allocate_data(solver);
 	preprocess(solver);
-	if (solver->solved) return solver;
+	if (solver->solved) {
+		print_statistics(solver->statistics);
+		return solver;
+	}
 
 	init_two_watched(solver);
 
-	print_stats(solver);
-	return cdcl(solver);
+	cdcl(solver);
+
+	// TODO: is this the best place to put it?
+	if (solver->result)
+		for (int i = 1; i < solver->len_variables+1; i++)
+			solver->statistics.units += solver->level[i] == 0;
+	print_statistics(solver->statistics);
+
+	return solver;
 }
