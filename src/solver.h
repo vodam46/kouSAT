@@ -12,10 +12,12 @@ struct solver {
 	bool solved;
 	bool result;
 
+	bool should_probe;
+
 	int restarts;
 	int conflicts_until_restart;
 
-	int problem_len;
+	int allowed;
 	struct clauses problem;
 	struct int_arr units;
 

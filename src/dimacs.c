@@ -20,13 +20,13 @@ void parse(FILE* file, struct solver* solver) {
 		exit(1);
 	}
 	printf("c problem %s\n", line);
-	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->problem_len);
+	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->allowed);
 	free(line);
 
 	int loaded = 0;
 	bool ignore = false;
 	struct clause clause = nilclause;
-	while (loaded < solver->problem_len) {
+	while (loaded < solver->allowed) {
 		value value = 0;
 		fscanf(file, "%d", &value);
 		if (value == 0) {

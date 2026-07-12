@@ -675,7 +675,7 @@ void restart(struct solver* solver) {
 	while (solver->decisions.length > 0) undo_decision(solver);
 }
 
-bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
+bool resolve_conflict(struct solver* solver, int conflict) {
 	if (++solver->statistics.conflicts%LUBY_MULT == 0) {
 		printf(".");
 		fflush(stdout);
@@ -694,7 +694,7 @@ bool resolve_conflict(struct solver* solver, int conflict, bool* should_probe) {
 		return true;
 	}
 
-	*should_probe = new.length <= 2;
+	solver->should_probe = new.length <= 2;
 
 	if (new.length == 1) {
 		printf("(u %d)", new.values[0]);
@@ -809,23 +809,20 @@ void cdcl(struct solver* solver) {
 	init_vsids(solver);
 
 	// TODO: rewrite these as solver attributes
-	bool should_probe = true;
-	int allowed = solver->problem.length*2;
-
 	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1)
-			if (resolve_conflict(solver, conflict, &should_probe)) return;
+			if (resolve_conflict(solver, conflict)) return;
 
 		// TODO: less probing, slows down solver too much
-		if (should_probe && solver->decisions.length == 0) {
-			should_probe = false;
+		if (solver->should_probe && solver->decisions.length == 0) {
+			solver->should_probe = false;
 			probe(solver);
 			if (solver->solved) return;
 		}
 
-		if (solver->problem.length > allowed) {
-			allowed = solver->problem.length*2;
+		if (solver->problem.length > solver->allowed) {
+			solver->allowed = solver->problem.length*2;
 			clean_database(solver);
 		}
 
@@ -881,8 +878,11 @@ struct solver* solve(FILE* file) {
 	solver->decisions			= nilarr;
 	solver->vsids				= NULL;
 	solver->phase				= NULL;
-	solver->problem_len			= 0;
+	solver->allowed				= 0;
 	solver->preprocessing_stack	= nilclauses;
+	solver->should_probe		= false;
+	solver->allowed				= solver->problem.length*2;
+
 
 #define INITIALIZE(name, type) solver->statistics.name = 0;
 	STATISTICS(INITIALIZE)

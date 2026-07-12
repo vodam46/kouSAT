@@ -501,5 +501,4 @@ preprocess_end:;
 	free(marked[1]);
 
 	printf("c after  %d\n", solver->problem.length);
-	solver->problem_len = solver->problem.length;
 }
