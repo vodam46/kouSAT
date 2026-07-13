@@ -62,7 +62,6 @@ gprof:
 
 profile: CFLAGS := $(filter-out -O3,$(CFLAGS)) -O0
 profile: CFLAGS := $(filter-out -pg,$(CFLAGS))
-profile: OUT=$(OUT_TEST)
 profile: $(OUT)
 	time valgrind -s --log-file="valgrind" --tool=callgrind ./$(OUT) $(FILE)
 

@@ -14,6 +14,7 @@
 #include "solver.h"
 #include "clause.h"
 #include "dimacs.h"
+#include "int_arr.h"
 #include "preprocess.h"
 #include "watch.h"
 #include "statistics.h"
@@ -528,6 +529,7 @@ void probe(struct solver* solver) {
 	seen[1] = malloc(solver->len_variables*sizeof(bool));
 
 	enum vbool* values = malloc(solver->len_variables*sizeof(enum vbool));
+	for (int j = 0; j < solver->len_variables; j++) values[j] = vundef;
 
 	solver->statistics.probing_attempts++;
 
@@ -556,9 +558,7 @@ probe_restart:
 
 		bool check_extra = true;
 		struct int_arr var_list = nil_int_arr;
-
-		// TODO: dont reassign every time? - how
-		for (int j = 0; j < solver->len_variables; j++) values[j] = vundef;
+		struct int_arr values_arr = nil_int_arr;
 
 		for (int p = 0; p < 2; p++) {
 			if (solver->variables[var_i] != vundef) continue;
@@ -576,6 +576,7 @@ probe_restart:
 					free(seen[1]);
 					free(values);
 					free(var_list.arr);
+					free(values_arr.arr);
 					sat(solver);
 					return;
 				}
@@ -584,8 +585,10 @@ probe_restart:
 					int index = abs(solver->trail.arr[j]);
 					enum vbool val = solver->variables[index];
 					seen[val==vtrue][index-1] = true;
-					if (p == 0)
+					if (p == 0) {
 						values[index-1] = val;
+						extend_int_arr(&values_arr, index-1);
+					}
 					else if (p == 1 && values[index-1] == val)
 						extend_int_arr(&var_list, index);
 				}
@@ -616,6 +619,7 @@ probe_restart:
 				free(seen[1]);
 				free(values);
 				free(var_list.arr);
+				free(values_arr.arr);
 				unsat(solver);
 				return;
 			}
@@ -641,12 +645,18 @@ probe_restart:
 					free(seen[1]);
 					free(values);
 					free(var_list.arr);
+					free(values_arr.arr);
 					sat(solver);
 					return;
 				}
 				if (solver->variables[var] != vundef) break;
 			}
 		}
+		for (int i = 0; i < values_arr.length; i++) {
+			values[values_arr.arr[i]] = vundef;
+		}
+		values_arr.length = 0;
+		free(values_arr.arr);
 		free(var_list.arr);
 	}
 
@@ -833,7 +843,7 @@ void cdcl(struct solver* solver) {
 }
 
 void allocate_data(struct solver* solver) {
-	printf("allocating data\n");
+	printf("c allocating data\n");
 	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
 	solver->level = malloc((solver->len_variables+1) * sizeof(int));
 	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
@@ -880,7 +890,7 @@ struct solver* solve(FILE* file) {
 	solver->phase				= NULL;
 	solver->allowed				= 0;
 	solver->preprocessing_stack	= nilclauses;
-	solver->should_probe		= false;
+	solver->should_probe		= true;
 	solver->allowed				= solver->problem.length*2;
 
 
