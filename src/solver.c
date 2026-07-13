@@ -362,6 +362,27 @@ void remove_watched_clause(struct solver* solver, int index) {
 		remove_watches_index(&solver->watched_clauses[v>0][abs(v)], index);
 	}
 }
+void forget_clause(struct solver* solver, int index) {
+	// delete watches
+	remove_watched_clause(solver, index);
+
+	if (index != solver->problem.length-1) {
+		struct clause new = solver->problem.clauses[solver->problem.length-1];
+
+		remove_watched_clause(solver, solver->problem.length-1);
+		remove_clauses_unord(&solver->problem, index);
+
+		add_watched_clause(solver, index);
+
+		if (solver->reason[abs(new.values[0])] == solver->problem.length)
+			solver->reason[abs(new.values[0])] = index;
+		if (solver->reason[abs(new.values[1])] == solver->problem.length)
+			solver->reason[abs(new.values[1])] = index;
+
+	} else {
+		remove_clauses_unord(&solver->problem, index);
+	}
+}
 
 void init_two_watched(struct solver* solver) {
 	for (int i = 0; i < solver->problem.length; i++) {
@@ -521,6 +542,7 @@ void probe(struct solver* solver) {
 	// TODO: only literals that are in a 2 length clause
 	// TODO: clean this up
 	// TODO: dont allocate all the time
+	// TODO: equivalent literals
 	printf("(P %d ", solver->statistics.probed);
 	fflush(stdout);
 
@@ -756,9 +778,9 @@ void clean_database(struct solver* solver) {
 			}
 			c->values[l++] = c->values[r];
 		}
-		reduce_clause(c, r-l);
 
 		if (!toplevel_satisfied) {
+			reduce_clause(c, r-l);
 
 			if (r != l) {
 				solver->statistics.clauses_reduced += (r-l);
@@ -791,25 +813,8 @@ void clean_database(struct solver* solver) {
 
 		solver->statistics.cleaned++;
 
-		// delete watches
-		remove_watched_clause(solver, i);
+		forget_clause(solver, i);
 
-		if (i != solver->problem.length-1) {
-			struct clause new = solver->problem.clauses[solver->problem.length-1];
-
-			remove_watched_clause(solver, solver->problem.length-1);
-			remove_clauses_unord(&solver->problem, i);
-
-			add_watched_clause(solver, i);
-
-			if (solver->reason[abs(new.values[0])] == solver->problem.length)
-				solver->reason[abs(new.values[0])] = i;
-			if (solver->reason[abs(new.values[1])] == solver->problem.length)
-				solver->reason[abs(new.values[1])] = i;
-
-		} else {
-			remove_clauses_unord(&solver->problem, i);
-		}
 	}
 	printf("%d)", solver->problem.length);
 }

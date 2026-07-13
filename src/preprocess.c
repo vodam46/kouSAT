@@ -12,7 +12,6 @@
 bool unit_check(struct solver* solver, struct clause clause) {
 	if (clause.length > 1) return false;
 	if (clause.length == 0) {
-		// TODO: isnt needed, but i dont want to remove this
 		unsat(solver);
 		return true;
 	}
@@ -47,7 +46,7 @@ void preprocess_unit_propagate(
 
 			if (touched != NULL)
 				for (int i = 0; i < solver->problem.clauses[index].length; i++)
-					touched[abs(solver->problem.clauses[index].values[i])] = true;
+					touched[abs(solver->problem.clauses[index].values[i])-1] = true;
 
 			remove_clause_value(&solver->problem.clauses[index], -v);
 			if (unit_check(solver, solver->problem.clauses[index])) return;
@@ -63,7 +62,7 @@ void preprocess_unit_propagate(
 
 			if (touched != NULL)
 				for (int i = 0; i < solver->problem.clauses[index].length; i++)
-					touched[abs(solver->problem.clauses[index].values[i])] = true;
+					touched[abs(solver->problem.clauses[index].values[i])-1] = true;
 
 			remove_clause_occurence(&solver->problem, occurs, index);
 		}
@@ -103,6 +102,7 @@ void preprocess_subsume_clauses(
 		struct solver* solver,
 		struct int_arr** occurs,
 		int ci,
+		bool* s,
 		bool* strengthened,
 		bool* touched
 		) {
@@ -125,9 +125,10 @@ void preprocess_subsume_clauses(
 		if (index == ci) continue;
 		if(subsumes(clause, other)) {
 			solver->statistics.clauses_removed++;
+			s[index] = s[solver->problem.length-1];
 			strengthened[index] = strengthened[solver->problem.length-1];
 			for (int i = 0; i < other.length; i++)
-				touched[abs(other.values[i])] = true;
+				touched[abs(other.values[i])-1] = true;
 			if (ci == solver->problem.length-1) ci = index;
 			remove_clause_occurence(&solver->problem, occurs, index);
 		}
@@ -192,7 +193,7 @@ variable_eliminate:;
 			extend_clauses(&solver->preprocessing_stack, clause);
 			(*added)[index] = (*added)[solver->problem.length-1];
 			for (int i = 0; i < clause.length; i++)
-				touched[abs(clause.values[i])] = true;
+				touched[abs(clause.values[i])-1] = true;
 			remove_clause_occurence(&solver->problem, occurs, index);
 		}
 	}
@@ -215,7 +216,6 @@ variable_eliminate:;
 				break;
 			}
 			if (nc.length == 1) {
-				// TODO: shouldnt ever happen? - would be cleared by self subsumtion
 				if (unit_check(solver, nc)) {
 					free(nc.values);
 					free(neg.clauses);
@@ -276,7 +276,7 @@ void preprocess_self_subsume(
 			if (subsumes(clause, *other)) {
 				solver->statistics.clauses_reduced++;
 				for (int i = 0; i < other->length; i++)
-					touched[abs(other->values[i])] = true;
+					touched[abs(other->values[i])-1] = true;
 				remove_clause_value(other, -p);
 				remove_int_arr_value(occur, index);
 				strengthened[index] = true;
@@ -315,6 +315,19 @@ int qsort_preprocess(const void* l, const void* r) {
 	return res != 0 ? res : ((int*)l)[0] - ((int*)r)[0];
 }
 
+struct int_arr calculate_elimination_order(struct solver* solver, struct int_arr** occurs, bool* s) {
+	struct int_arr ret = nil_int_arr;
+	ret.arr = malloc(2*solver->len_variables*sizeof(int));
+	for (int i = 1; i < solver->len_variables+1; i++) {
+		if (!s[i-1] || solver->variables[i] != vundef) continue;
+		ret.arr[ret.length++] = i;
+		ret.arr[ret.length++] = occurs[0][i].length * occurs[1][i].length;
+	}
+	// TODO: qsort_r? or my own function?
+	qsort(ret.arr, ret.length/2, sizeof(int)*2, qsort_preprocess);
+	return ret;
+}
+
 // TODO: figure out some more complex preprocessing
 void preprocess(struct solver* solver) {
 	printf("c preprocessing\n");
@@ -340,8 +353,8 @@ void preprocess(struct solver* solver) {
 		return;
 	}
 
-	bool* touched = malloc((solver->len_variables+1) * sizeof(bool));
-	bool* s  = malloc((solver->len_variables+1) * sizeof(bool));
+	bool* touched = malloc(solver->len_variables * sizeof(bool));
+	bool* s  = malloc(solver->len_variables * sizeof(bool));
 
 	bool* added = malloc(solver->problem.length * sizeof(bool));
 	bool* strengthened = malloc(solver->problem.length * sizeof(bool));
@@ -352,12 +365,10 @@ void preprocess(struct solver* solver) {
 	marked[0] = malloc((solver->len_variables+1) * sizeof(bool));
 	marked[1] = malloc((solver->len_variables+1) * sizeof(bool));
 
-	memset(touched, true, (solver->len_variables+1)*sizeof(bool));
+	memset(touched, true, solver->len_variables*sizeof(bool));
 	memset(added, true, solver->problem.length*sizeof(bool));
 	memset(strengthened, false, solver->problem.length*sizeof(bool));
 
-	// TODO: backwards subsumtion?
-	// check if a newly added clause is subsumed by an already added clause
 	// TODO: separate into functions
 	int round = 0;
 	do {
@@ -406,10 +417,6 @@ void preprocess(struct solver* solver) {
 			memset(added, false, solver->problem.length * sizeof(bool));
 			memset(strengthened, false, solver->problem.length * sizeof(bool));
 
-			// int count = 0;
-			// for (int i = 0; i < solver->problem.length; i++) count += s1[i];
-			// printf("self %d/%d\n", count, solver->problem.length);
-
 			// TODO: speed up self subsumtion
 			for (int i = 0; i < solver->problem.length; i++) {
 				if (!s1[i]) continue;
@@ -429,42 +436,22 @@ void preprocess(struct solver* solver) {
 			strengthened = realloc(strengthened, solver->problem.length * sizeof(bool));
 		} while (!is_all_false(strengthened, solver->problem.length));
 
-		// int count = 0;
-		// for (int i = 0; i < solver->problem.length; i++) count += s0[i];
-		// printf("subsume %d/%d\n", count, solver->problem.length);
-
 		for (int i = solver->problem.length-1; i >= 0; i--) {
 			if (!s0[i]) continue;
-			preprocess_subsume_clauses(solver, occurs, i, strengthened, touched);
+			preprocess_subsume_clauses(solver, occurs, i, s0, strengthened, touched);
 			if (i >= solver->problem.length) i = solver->problem.length;
-			if (solver->solved) goto preprocess_end;
 		}
 
 		do {
 			// printf("eliminate\n");
-			memcpy(s, touched, (solver->len_variables+1)*sizeof(bool));
-			memset(touched, false, (solver->len_variables+1)*sizeof(bool));
+			memcpy(s, touched, solver->len_variables*sizeof(bool));
+			memset(touched, false, solver->len_variables*sizeof(bool));
 
-			int skip = 0;
-			int* arr = malloc(2 * solver->len_variables * sizeof(int));
-			for (int i = 0; i < solver->len_variables; i++) {
-				if (!s[i+1]) {
-					skip++;
-					continue;
-				}
-				if (solver->variables[i+1] != vundef) {
-					skip++;
-					continue;
-				}
-				arr[2*(i-skip)] = i+1;
-				arr[2*(i-skip)+1] = occurs[0][i+1].length * occurs[1][i+1].length;
-			}
-			// TODO: qsort_r? or my own function?
-			qsort(arr, solver->len_variables-skip, sizeof(int)*2, qsort_preprocess);
+			struct int_arr elim_order = calculate_elimination_order(solver, occurs, s);
 
-			for (int i = 0; i < solver->len_variables-skip; i++) {
-				int var = arr[2*i];
-				if (!s[var]) continue;
+			for (int i = 0; i < elim_order.length; i+=2) {
+				int var = elim_order.arr[i];
+				if (!s[var-1]) continue;
 				if (solver->variables[var] != vundef) continue;
 				if (occurs[0][var].length == 0 || occurs[1][var].length == 0) continue;
 				if (occurs[0][var].length > 50 && occurs[1][var].length > 50) continue;
@@ -473,7 +460,7 @@ void preprocess(struct solver* solver) {
 					solver->statistics.variables_eliminated++;
 					if (solver->solved) goto preprocess_end;
 					if (solver->problem.length == 0) {
-						free(arr);
+						free(elim_order.arr);
 						sat(solver);
 						goto preprocess_end;
 					}
@@ -483,8 +470,8 @@ void preprocess(struct solver* solver) {
 					memset(strengthened, false, solver->problem.length*sizeof(bool));
 				}
 			}
-			free(arr);
-		} while (!is_all_false(touched, solver->len_variables+1));
+			free(elim_order.arr);
+		} while (!is_all_false(touched, solver->len_variables));
 	} while (!is_all_false(added, solver->problem.length));
 
 preprocess_end:;

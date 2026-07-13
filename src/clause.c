@@ -75,7 +75,6 @@ void reduce_clause(struct clause* clause, unsigned length) {
 	}
 }
 
-// TODO: different way of calculating clauses over 64 length?
 void recalculate_mask(struct clause* clause) {
 	clause->mask = 0;
 	for (int i = 0; i < clause->length; i++) {
