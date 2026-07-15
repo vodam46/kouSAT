@@ -435,8 +435,10 @@ void minimize(struct solver* solver, struct clause* clause) {
 	memset(solver->remove, false, (solver->len_variables+1)*sizeof(bool));
 
 	for (int i = 0; i < ret.length; i++) solver->ignore[abs(ret.values[i])] = true;
+
 	for (int i = 0; i < solver->decisions.arr[0]; i++) {
 		int index = abs(solver->trail.arr[i]);
+		if (solver->ignore[index]) length--;
 		solver->ignore[index] = true;
 		solver->remove[index] = true;
 	}
@@ -461,16 +463,28 @@ void minimize(struct solver* solver, struct clause* clause) {
 		}
 	}
 
+	int l = 0, r = 0;
+	uint64_t mask = 0;
+	for (; r < ret.length; r++) {
+		if (!solver->remove[abs(ret.values[r])]) {
+			mask |= get_mask(ret.values[r]);
+			ret.values[l++] = ret.values[r];
+		} else solver->statistics.minimized++;
+	}
+	reduce_clause(&ret, r-l);
+	ret.mask = mask;
+
 	// self subsuming resolution on conflict clause
 	// https://www.msoos.org/2010/08/on-the-fly-self-subsuming-resolution/
 	if (length > 1) {
 		for (int i = 1; i < ret.length; i++) {
 			value l = ret.values[i];
-			if (solver->remove[abs(l)]) continue;
 			struct watches arr = solver->watched_clauses[l<0][abs(l)];
 			for (int j = 0; j < arr.length; j++) {
 				struct watch w = arr.arr[j];
 				if (w.type != binary_clause) continue;
+
+				// TODO: do this without clause_contains
 				if (!solver->remove[abs(w.blocker)] && solver->ignore[abs(w.blocker)] && clause_contains(ret, w.blocker)) {
 					solver->remove[abs(l)] = true;
 					length--;
@@ -481,15 +495,15 @@ void minimize(struct solver* solver, struct clause* clause) {
 		}
 	}
 
-	int i = 0, r = 0;
-	uint64_t mask = 0;
+	l = 0, r = 0;
+	mask = 0;
 	for (; r < ret.length; r++) {
 		if (!solver->remove[abs(ret.values[r])]) {
 			mask |= get_mask(ret.values[r]);
-			ret.values[i++] = ret.values[r];
+			ret.values[l++] = ret.values[r];
 		} else solver->statistics.minimized++;
 	}
-	reduce_clause(&ret, r-i);
+	reduce_clause(&ret, r-l);
 	ret.mask = mask;
 
 	*clause = ret;
@@ -555,7 +569,7 @@ void probe(struct solver* solver) {
 
 	solver->statistics.probing_attempts++;
 
-probe_restart:
+probe_restart:;
 	bool change = false;
 
 	if (unit_propagate(solver) != -1) {
@@ -657,7 +671,6 @@ probe_restart:
 					extend_int_arr(&solver->units, -var);
 					assign(solver, -var, -1);
 				}
-				values[var-1] = vundef;
 
 				change = true;
 				unit_propagate(solver);
@@ -674,10 +687,9 @@ probe_restart:
 				if (solver->variables[var] != vundef) break;
 			}
 		}
-		for (int i = 0; i < values_arr.length; i++) {
-			values[values_arr.arr[i]] = vundef;
+		while (values_arr.length) {
+			values[values_arr.arr[--values_arr.length]] = vundef;
 		}
-		values_arr.length = 0;
 		free(values_arr.arr);
 		free(var_list.arr);
 	}
