@@ -49,6 +49,7 @@ void preprocess_unit_propagate(
 					touched[abs(solver->problem.clauses[index].values[i])-1] = true;
 
 			remove_clause_value(&solver->problem.clauses[index], -v);
+			recalculate_mask(&solver->problem.clauses[index]);
 			if (unit_check(solver, solver->problem.clauses[index])) return;
 		}
 

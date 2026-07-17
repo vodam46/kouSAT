@@ -137,6 +137,10 @@ void destroy_solver(struct solver* solver) {
 	free(solver->ignore);
 	free(solver->remove);
 
+	free(solver->values);
+	free(solver->seen[0]);
+	free(solver->seen[1]);
+
 	free(solver);
 }
 
@@ -159,7 +163,7 @@ reassign_skip:;
 
 
 	solver->statistics.solutions++;
-	printf("\nv ");
+	printf("\n\nv ");
 	print_variables(solver);
 }
 
@@ -560,12 +564,7 @@ void probe(struct solver* solver) {
 	printf("(P %d ", solver->statistics.probed);
 	fflush(stdout);
 
-	bool* seen[2];
-	seen[0] = malloc(solver->len_variables*sizeof(bool));
-	seen[1] = malloc(solver->len_variables*sizeof(bool));
-
-	enum vbool* values = malloc(solver->len_variables*sizeof(enum vbool));
-	for (int j = 0; j < solver->len_variables; j++) values[j] = vundef;
+	for (int j = 0; j < solver->len_variables; j++) solver->values[j] = vundef;
 
 	solver->statistics.probing_attempts++;
 
@@ -573,27 +572,25 @@ probe_restart:;
 	bool change = false;
 
 	if (unit_propagate(solver) != -1) {
-		free(seen[0]);
-		free(seen[1]);
-		free(values);
 		unsat(solver);
 		return;
 	}
 
-	memset(seen[0], false, solver->len_variables*sizeof(bool));
-	memset(seen[1], false, solver->len_variables*sizeof(bool));
+	memset(solver->seen[0], false, solver->len_variables*sizeof(bool));
+	memset(solver->seen[1], false, solver->len_variables*sizeof(bool));
 
 	// TODO: go through all clauses - if theres a binary clause - mark the literals as "probeable"?
 
 	for (int var_i = 1; var_i < solver->len_variables+1; var_i++) {
 
-		if (seen[0][var_i-1] && seen[1][var_i-1]) continue;
+		if (solver->seen[0][var_i-1] && solver->seen[1][var_i-1]) continue;
 		if (solver->watched_clauses[0][var_i].length == 0
 				&& solver->watched_clauses[1][var_i].length == 0) continue;
 		if (solver->variables[var_i] != vundef) continue;
 
 		bool check_extra = true;
-		struct int_arr var_list = nil_int_arr;
+		struct int_arr probed_units = nil_int_arr;
+		struct int_arr equivalent_lits = nil_int_arr;
 		struct int_arr values_arr = nil_int_arr;
 
 		for (int p = 0; p < 2; p++) {
@@ -608,31 +605,42 @@ probe_restart:;
 
 			if (conflict == -1) {
 				if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) {
-					free(seen[0]);
-					free(seen[1]);
-					free(values);
-					free(var_list.arr);
+					free(probed_units.arr);
+					free(equivalent_lits.arr);
 					free(values_arr.arr);
 					sat(solver);
 					return;
 				}
 
-				for (int j = solver->decisions.arr[0]; j < solver->trail.length; j++) {
+				for (int j = solver->decisions.arr[0]+1; j < solver->trail.length; j++) {
 					int index = abs(solver->trail.arr[j]);
 					enum vbool val = solver->variables[index];
-					seen[val==vtrue][index-1] = true;
+					solver->seen[val==vtrue][index-1] = true;
 					if (p == 0) {
-						values[index-1] = val;
+						solver->values[index-1] = val;
 						extend_int_arr(&values_arr, index-1);
 					}
-					else if (p == 1 && values[index-1] == val)
-						extend_int_arr(&var_list, index);
+					else {
+						if (solver->values[index-1] == vundef) continue;
+
+						if (solver->values[index-1] == val)
+							extend_int_arr(&probed_units, index);
+						if (solver->values[index-1] != val)
+							extend_int_arr(&equivalent_lits, solver->trail.arr[j]);
+					}
 				}
 				undo_decision(solver);
 				continue;
 			}
 
 			struct clause new = analyze(solver, conflict);
+			if (new.length == 0) {
+				free(probed_units.arr);
+				free(equivalent_lits.arr);
+				free(values_arr.arr);
+				unsat(solver);
+				return;
+			}
 			value unit = new.values[0];
 			free(new.values);
 
@@ -651,23 +659,21 @@ probe_restart:;
 			check_extra = false;
 
 			if (conflict != -1) {
-				free(seen[0]);
-				free(seen[1]);
-				free(values);
-				free(var_list.arr);
+				free(probed_units.arr);
+				free(equivalent_lits.arr);
 				free(values_arr.arr);
 				unsat(solver);
 				return;
 			}
 		}
 		if (check_extra) {
-			for (int index = 0; index < var_list.length; index++) {
-				value var = var_list.arr[index];
+			for (int index = 0; index < probed_units.length; index++) {
+				value var = probed_units.arr[index];
 				int now = solver->trail.length;
-				if (values[var-1] == vtrue) {
+				if (solver->values[var-1] == vtrue) {
 					extend_int_arr(&solver->units, var);
 					assign(solver, var, -1);
-				} else if (values[var-1] == vfalse) {
+				} else if (solver->values[var-1] == vfalse) {
 					extend_int_arr(&solver->units, -var);
 					assign(solver, -var, -1);
 				}
@@ -676,30 +682,100 @@ probe_restart:;
 				unit_propagate(solver);
 				solver->statistics.probed += solver->trail.length - now;
 				if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) {
-					free(seen[0]);
-					free(seen[1]);
-					free(values);
-					free(var_list.arr);
+					free(probed_units.arr);
+					free(equivalent_lits.arr);
 					free(values_arr.arr);
 					sat(solver);
 					return;
 				}
 				if (solver->variables[var] != vundef) break;
 			}
+
+			for (int eq_i = 0; eq_i < equivalent_lits.length; eq_i++) {
+				int to_replace = equivalent_lits.arr[eq_i];
+				if (solver->variables[abs(to_replace)] != vundef) continue;
+				change = true;
+				solver->statistics.probed++;
+
+				for (int j = 0; j < 2; j++) {
+					struct clause c = nilclause;
+					extend_clause(&c, to_replace);
+					extend_clause(&c, var_i);
+					c.values[j] *= -1;
+					extend_clauses(&solver->preprocessing_stack, c);
+				}
+
+				// TODO: using occurence lists
+				for (int ci = 0; ci < solver->problem.length; ci++) {
+					struct clause* c = &solver->problem.clauses[ci];
+					int index = -1;
+					int mult = 0;
+					int other = -1;
+					for (int i = 0; i < c->length; i++) {
+						value v = c->values[i];
+						if (abs(v) == abs(to_replace)) {
+							index = i;
+							mult = v == to_replace ? 1 : -1;
+						}
+						if (abs(v) == var_i) other = i;
+					}
+					if (index == -1) continue;
+					if (other == -1) {
+						if (index < 2) remove_watched_clause(solver, ci);
+						c->values[index] = var_i*mult;
+						if (index < 2) add_watched_clause(solver, ci);
+						recalculate_mask(c);
+						continue;
+					}
+
+					if (c->values[other] != var_i*mult) {
+						forget_clause(solver, ci--);
+						continue;
+					}
+
+					if (index < 2) remove_watched_clause(solver, ci);
+					remove_clause_unord(c, index);
+					recalculate_mask(c);
+
+					if (c->length != 1) {
+						// TODO: what to do if the replacement is assigned false?
+						if (index < 2) add_watched_clause(solver, ci);
+						continue;
+					}
+
+					// TODO: shouldnt be possible?
+					// wouldve already been seen during regular probing
+					printf("new unit %d\n", c->values[0]);
+					value unit = c->values[0];
+					if (solver->variables[abs(unit)] == vundef) {
+						assign(solver, unit, -1);
+						extend_int_arr(&solver->units, unit);
+						remove_clauses_unord(&solver->problem, ci--);
+						continue;
+					}
+
+					if (solver->variables[abs(unit)] == get_vbool(unit)) {
+						remove_clauses_unord(&solver->problem, ci--);
+					} else {
+						unsat(solver);
+						return;
+					}
+				}
+			}
 		}
+
 		while (values_arr.length) {
-			values[values_arr.arr[--values_arr.length]] = vundef;
+			solver->values[values_arr.arr[--values_arr.length]] = vundef;
 		}
+
 		free(values_arr.arr);
-		free(var_list.arr);
+		free(probed_units.arr);
+		free(equivalent_lits.arr);
 	}
 
 	// looping actually makes it slower - look into why
 	// rewrite to use an int_arr?
 	if (change) goto probe_restart;
-	free(seen[0]);
-	free(seen[1]);
-	free(values);
 	printf("%d)", solver->statistics.probed);
 }
 
@@ -793,6 +869,7 @@ void clean_database(struct solver* solver) {
 
 		if (!toplevel_satisfied) {
 			reduce_clause(c, r-l);
+			recalculate_mask(c);
 
 			if (r != l) {
 				solver->statistics.clauses_reduced += (r-l);
@@ -864,7 +941,9 @@ void allocate_data(struct solver* solver) {
 	solver->variables = malloc((solver->len_variables+1) * sizeof(enum vbool));
 	solver->level = malloc((solver->len_variables+1) * sizeof(int));
 	for (int i = 1; i < solver->len_variables+1; i++) solver->variables[i] = vundef;
+	memset(solver->level, 0, (solver->len_variables+1)*sizeof(int));
 	solver->reason = malloc((solver->len_variables+1) * sizeof(int));
+	memset(solver->reason, 0, (solver->len_variables+1)*sizeof(int));
 	solver->phase = malloc((solver->len_variables+1) * sizeof(bool));
 	memset(solver->phase, false, (solver->len_variables+1)*sizeof(bool));
 
@@ -880,6 +959,10 @@ void allocate_data(struct solver* solver) {
 
 	solver->ignore = malloc((solver->len_variables+1)*sizeof(bool));
 	solver->remove = malloc((solver->len_variables+1)*sizeof(bool));
+
+	solver->values = malloc((solver->len_variables+1) * sizeof(enum vbool));
+	for (int i = 0; i < 2; i++)
+		solver->seen[i] = malloc((solver->len_variables+1) * sizeof(bool));
 
 	solver->trail.arr = malloc((solver->len_variables-solver->statistics.variables_eliminated) * sizeof(value));
 }
