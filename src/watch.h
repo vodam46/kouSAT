@@ -1,5 +1,6 @@
 #pragma once
 
+#include "solver.h"
 #include "clause.h"
 
 enum watch_type {
@@ -26,5 +27,7 @@ void extend_watches(struct watches*, struct watch);
 void remove_watches_unord(struct watches*, int);
 void reduce_watches(struct watches*, int);
 void remove_watches_index(struct watches*, int);
+void add_watched_clause(struct solver*, int);
+void remove_watched_clause(struct solver*, int);
 
 void print_watches(struct watches);

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "solver.h"
+#include "watch.h"
 #include "clause.h"
 #include "preprocess.h"
 #include "occurs.h"
@@ -28,7 +29,6 @@ bool unit_check(struct solver* solver, struct clause clause) {
 
 void preprocess_unit_propagate(
 		struct solver* solver,
-		struct int_arr** occurs,
 		bool* strengthened,
 		bool** arr,
 		bool* touched
@@ -36,26 +36,34 @@ void preprocess_unit_propagate(
 	// printf("preprocess unit propagation\n");
 	for (; solver->queue < solver->units.length; solver->queue++) {
 		value v = solver->units.arr[solver->queue];
-		if (occurs[0][abs(v)].length == 0 && occurs[1][abs(v)].length == 0) continue;
-		for (int i = 0; i < occurs[v<0][abs(v)].length; i++) {
-			int index = occurs[v<0][abs(v)].arr[i];
+		if (solver->occurs[0][abs(v)].length == 0 && solver->occurs[1][abs(v)].length == 0) continue;
+		for (int i = 0; i < solver->occurs[v<0][abs(v)].length; i++) {
+			int index = solver->occurs[v<0][abs(v)].arr[i];
 			solver->statistics.clauses_reduced++;
+
+			struct clause* c = &solver->problem.clauses[index];
 
 			if (strengthened != NULL)
 				strengthened[index] = true;
 
 			if (touched != NULL)
-				for (int i = 0; i < solver->problem.clauses[index].length; i++)
-					touched[abs(solver->problem.clauses[index].values[i])-1] = true;
+				for (int i = 0; i < c->length; i++)
+					touched[abs(c->values[i])-1] = true;
 
-			remove_clause_value(&solver->problem.clauses[index], -v);
-			recalculate_mask(&solver->problem.clauses[index]);
+			bool reattach = false;
+			if (c->values[0] == -v || c->values[1] == -v) {
+				reattach = true;
+				remove_watched_clause(solver, index);
+			}
+			remove_clause_value(c, -v);
+			recalculate_mask(c);
+			if (reattach && c->length >= 2) add_watched_clause(solver, index);
 			if (unit_check(solver, solver->problem.clauses[index])) return;
 		}
 
-		while (occurs[v>0][abs(v)].length) {
+		while (solver->occurs[v>0][abs(v)].length) {
 			solver->statistics.clauses_removed++;
-			int index = occurs[v>0][abs(v)].arr[0];
+			int index = solver->occurs[v>0][abs(v)].arr[0];
 
 			if (arr != NULL)
 				for (int i = 0; arr[i]; i++)
@@ -65,30 +73,30 @@ void preprocess_unit_propagate(
 				for (int i = 0; i < solver->problem.clauses[index].length; i++)
 					touched[abs(solver->problem.clauses[index].values[i])-1] = true;
 
-			remove_clause_occurence(&solver->problem, occurs, index);
+			forget_clause(solver, index);
 		}
 
 		for (int b = 0; b < 2; b++) {
-			free(occurs[b][abs(v)].arr);
-			occurs[b][abs(v)].arr = NULL;
-			occurs[b][abs(v)].length = 0;
+			free(solver->occurs[b][abs(v)].arr);
+			solver->occurs[b][abs(v)].arr = NULL;
+			solver->occurs[b][abs(v)].length = 0;
 		}
 	}
 }
 
-bool preprocess_pure_literals(struct solver* solver, struct int_arr** occurs) {
+bool preprocess_pure_literals(struct solver* solver) {
 	// printf("preprocess pure literals\n");
 	bool change = false;
 
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		if (solver->variables[i] != vundef) continue;
-		if (occurs[0][i].length == 0 && occurs[1][i].length >= 1) {
+		if (solver->occurs[0][i].length == 0 && solver->occurs[1][i].length >= 1) {
 			// printf("pure %d\n", i);
 			assign(solver, i, -1);
 			extend_int_arr(&solver->units, i);
 			change = true;
 		}
-		if (occurs[0][i].length >= 1 && occurs[1][i].length == 0) {
+		if (solver->occurs[0][i].length >= 1 && solver->occurs[1][i].length == 0) {
 			// printf("pure %d\n", -i);
 			assign(solver, -i, -1);
 			extend_int_arr(&solver->units, -i);
@@ -101,7 +109,6 @@ bool preprocess_pure_literals(struct solver* solver, struct int_arr** occurs) {
 
 void preprocess_subsume_clauses(
 		struct solver* solver,
-		struct int_arr** occurs,
 		int ci,
 		bool* s,
 		bool* strengthened,
@@ -113,13 +120,13 @@ void preprocess_subsume_clauses(
 	int count = INT_MAX;
 	for (int i = 0; i < clause.length; i++) {
 		value l = clause.values[i];
-		if (occurs[l>0][abs(l)].length < count) {
+		if (solver->occurs[l>0][abs(l)].length < count) {
 			lit = l;
-			count = occurs[l>0][abs(l)].length;
+			count = solver->occurs[l>0][abs(l)].length;
 		}
 	}
 
-	struct int_arr* occ = &occurs[lit>0][abs(lit)];
+	struct int_arr* occ = &solver->occurs[lit>0][abs(lit)];
 	for (int i = occ->length-1; i >= 0; i--) {
 		int index = occ->arr[i];
 		struct clause other = solver->problem.clauses[index];
@@ -131,7 +138,7 @@ void preprocess_subsume_clauses(
 			for (int i = 0; i < other.length; i++)
 				touched[abs(other.values[i])-1] = true;
 			if (ci == solver->problem.length-1) ci = index;
-			remove_clause_occurence(&solver->problem, occurs, index);
+			forget_clause(solver, index);
 		}
 	}
 }
@@ -195,7 +202,7 @@ variable_eliminate:;
 			(*added)[index] = (*added)[solver->problem.length-1];
 			for (int i = 0; i < clause.length; i++)
 				touched[abs(clause.values[i])-1] = true;
-			remove_clause_occurence(&solver->problem, occurs, index);
+			forget_clause(solver, index);
 		}
 	}
 	int new_len = solver->problem.length + pos.length*neg.length + 1;
@@ -225,9 +232,8 @@ variable_eliminate:;
 				}
 				free(nc.values);
 			} else {
-				add_occurence(nc, solver->problem.length, occurs);
 				(*added)[solver->problem.length] = true;
-				extend_clauses(&solver->problem, nc);
+				learn_clause(solver, nc);
 			}
 		}
 	}
@@ -240,7 +246,6 @@ variable_eliminate:;
 
 void preprocess_self_subsume(
 		struct solver* solver,
-		struct int_arr** occurs,
 		int ci,
 		bool* strengthened,
 		bool* touched
@@ -253,10 +258,10 @@ void preprocess_self_subsume(
 	int count = INT_MAX;
 	for (int i = 0; i < clause.length; i++) {
 		value l = clause.values[i];
-		if (occurs[l>0][abs(l)].length < count) {
+		if (solver->occurs[l>0][abs(l)].length < count) {
 			other = lit;
 			lit = l;
-			count = occurs[l>0][abs(l)].length;
+			count = solver->occurs[l>0][abs(l)].length;
 		}
 	}
 
@@ -265,10 +270,10 @@ void preprocess_self_subsume(
 		clause.values[pi] = -p;
 
 		struct int_arr* occur;
-		if (lit != p) occur = &occurs[lit<0][abs(lit)];
-		else occur = &occurs[other<0][abs(other)];
-		if (occurs[p<0][abs(p)].length < occur->length)
-			occur = &occurs[p<0][abs(p)];
+		if (lit != p) occur = &solver->occurs[lit<0][abs(lit)];
+		else occur = &solver->occurs[other<0][abs(other)];
+		if (solver->occurs[p<0][abs(p)].length < occur->length)
+			occur = &solver->occurs[p<0][abs(p)];
 
 		for (int oi = occur->length-1; oi >= 0; oi--) {
 			int index = occur->arr[oi];
@@ -278,7 +283,13 @@ void preprocess_self_subsume(
 				solver->statistics.clauses_reduced++;
 				for (int i = 0; i < other->length; i++)
 					touched[abs(other->values[i])-1] = true;
+				bool reattach = false;
+				if (other->values[0] == -p || other->values[1] == -p) {
+					reattach = true;
+					remove_watched_clause(solver, index);
+				}
 				remove_clause_value(other, -p);
+				if (reattach && other->length >= 2) add_watched_clause(solver, index);
 				remove_int_arr_value(occur, index);
 				strengthened[index] = true;
 				if (other->length == 0) {
@@ -295,14 +306,13 @@ void preprocess_self_subsume(
 
 void toplevel_propagate(
 		struct solver* solver,
-		struct int_arr** occurs,
 		bool* strengthened,
 		bool** arr,
 		bool* touched
 		) {
 	do {
-		preprocess_unit_propagate(solver, occurs, strengthened, arr, touched);
-	} while (preprocess_pure_literals(solver, occurs));
+		preprocess_unit_propagate(solver, strengthened, arr, touched);
+	} while (preprocess_pure_literals(solver));
 }
 
 bool is_all_false(bool* arr, int length) {
@@ -344,13 +354,10 @@ void preprocess(struct solver* solver) {
 		}
 	}
 	printf("c before %d\n", solver->problem.length);
-	struct int_arr** occurs = build_occurence_list(solver->problem, solver->len_variables);
-
-	toplevel_propagate(solver, occurs, NULL, NULL, NULL);
+	toplevel_propagate(solver, NULL, NULL, NULL);
 	printf("c toplevel %d\n" ,solver->problem.length);
 	if (solver->problem.length == 0) {
 		sat(solver);
-		free_occurs(solver, occurs);
 		return;
 	}
 
@@ -421,12 +428,12 @@ void preprocess(struct solver* solver) {
 			// TODO: speed up self subsumtion
 			for (int i = 0; i < solver->problem.length; i++) {
 				if (!s1[i]) continue;
-				preprocess_self_subsume(solver, occurs, i, strengthened, touched);
+				preprocess_self_subsume(solver, i, strengthened, touched);
 				if (solver->solved) goto preprocess_end;
 			}
 
 	 		bool* self_subsume_arr[] = {strengthened, s0, NULL};
-			toplevel_propagate(solver, occurs, strengthened, self_subsume_arr, touched);
+			toplevel_propagate(solver, strengthened, self_subsume_arr, touched);
 			if (solver->solved) goto preprocess_end;
 			if (solver->problem.length == 0) {
 				sat(solver);
@@ -439,7 +446,7 @@ void preprocess(struct solver* solver) {
 
 		for (int i = solver->problem.length-1; i >= 0; i--) {
 			if (!s0[i]) continue;
-			preprocess_subsume_clauses(solver, occurs, i, s0, strengthened, touched);
+			preprocess_subsume_clauses(solver, i, s0, strengthened, touched);
 			if (i >= solver->problem.length) i = solver->problem.length;
 		}
 
@@ -448,16 +455,16 @@ void preprocess(struct solver* solver) {
 			memcpy(s, touched, solver->len_variables*sizeof(bool));
 			memset(touched, false, solver->len_variables*sizeof(bool));
 
-			struct int_arr elim_order = calculate_elimination_order(solver, occurs, s);
+			struct int_arr elim_order = calculate_elimination_order(solver, solver->occurs, s);
 
 			for (int i = 0; i < elim_order.length; i+=2) {
 				int var = elim_order.arr[i];
 				if (!s[var-1]) continue;
 				if (solver->variables[var] != vundef) continue;
-				if (occurs[0][var].length == 0 || occurs[1][var].length == 0) continue;
-				if (occurs[0][var].length > 50 && occurs[1][var].length > 50) continue;
+				if (solver->occurs[0][var].length == 0 || solver->occurs[1][var].length == 0) continue;
+				if (solver->occurs[0][var].length > 50 && solver->occurs[1][var].length > 50) continue;
 
-				if (maybe_eliminate(solver, var, occurs, touched, &added)) {
+				if (maybe_eliminate(solver, var, solver->occurs, touched, &added)) {
 					solver->statistics.variables_eliminated++;
 					if (solver->solved) goto preprocess_end;
 					if (solver->problem.length == 0) {
@@ -477,7 +484,6 @@ void preprocess(struct solver* solver) {
 
 preprocess_end:;
 	printf("c preprocessing %d rounds\n", round);
-	free_occurs(solver, occurs);
 
 	free(touched);
 	free(added);

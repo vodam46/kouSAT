@@ -1,6 +1,4 @@
 // TODO: check that everything is correct
-// TODO: probing -> some sort of way to do it alongside preprocessing
-// TODO: clause deleting
 // TODO: vsids queue
 // TODO: harden parsing - fault tolerant
 // TODO: clean up the code
@@ -18,6 +16,7 @@
 #include "preprocess.h"
 #include "watch.h"
 #include "statistics.h"
+#include "occurs.h"
 
 #define LUBY_MULT (1<<7)
 
@@ -141,9 +140,12 @@ void destroy_solver(struct solver* solver) {
 	free(solver->seen[0]);
 	free(solver->seen[1]);
 
+	free_occurs(solver);
+
 	free(solver);
 }
 
+// TODO: recursive?
 void new_solution(struct solver* solver) {
 	for (int i = 1; i < solver->len_variables+1; i++)
 		if (solver->variables[i] == vundef)
@@ -352,35 +354,37 @@ void undo_decision(struct solver* solver) {
 	solver->queue = solver->trail.length;
 }
 
-void add_watched_clause(struct solver* solver, int index) {
-	struct clause clause = solver->problem.clauses[index];
-	for (int j = 0; j < 2; j++) {
-		value v = clause.values[j];
-		extend_watches(&solver->watched_clauses[v>0][abs(v)], create_watcher(clause, index, clause.values[1-j]));
+void learn_clause(struct solver* solver, struct clause clause) {
+	if (clause.length > 1) {
+		extend_clauses(&solver->problem, clause);
+		int index = solver->problem.length-1;
+		add_watched_clause(solver, index);
+		add_occurence(solver, index);
+	} else {
+		value unit = clause.values[0];
+		extend_int_arr(&solver->units, unit);
 	}
 }
-void remove_watched_clause(struct solver* solver, int index) {
-	struct clause clause = solver->problem.clauses[index];
-	for (int j = 0; j < 2; j++) {
-		value v = clause.values[j];
-		remove_watches_index(&solver->watched_clauses[v>0][abs(v)], index);
-	}
-}
+
 void forget_clause(struct solver* solver, int index) {
 	// delete watches
+	delete_occurence(solver, index);
 	remove_watched_clause(solver, index);
 
 	if (index != solver->problem.length-1) {
 		struct clause new = solver->problem.clauses[solver->problem.length-1];
 
+		delete_occurence(solver, solver->problem.length-1);
 		remove_watched_clause(solver, solver->problem.length-1);
+
 		remove_clauses_unord(&solver->problem, index);
 
+		add_occurence(solver, index);
 		add_watched_clause(solver, index);
 
-		if (solver->reason[abs(new.values[0])] == solver->problem.length)
+		if (new.length > 0 && solver->reason[abs(new.values[0])] == solver->problem.length)
 			solver->reason[abs(new.values[0])] = index;
-		if (solver->reason[abs(new.values[1])] == solver->problem.length)
+		if (new.length > 1 && solver->reason[abs(new.values[1])] == solver->problem.length)
 			solver->reason[abs(new.values[1])] = index;
 
 	} else {
@@ -777,6 +781,7 @@ probe_restart:;
 	// rewrite to use an int_arr?
 	if (change) goto probe_restart;
 	printf("%d)", solver->statistics.probed);
+	fflush(stdout);
 }
 
 int luby(int i) {
@@ -823,6 +828,7 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 	} else {
 		update_vsids(solver, new);
 		extend_clauses(&solver->problem, new);
+		add_occurence(solver, solver->problem.length-1);
 	}
 
 	// TODO: clean this up?
@@ -965,6 +971,8 @@ void allocate_data(struct solver* solver) {
 		solver->seen[i] = malloc((solver->len_variables+1) * sizeof(bool));
 
 	solver->trail.arr = malloc((solver->len_variables-solver->statistics.variables_eliminated) * sizeof(value));
+
+	build_occurence_list(solver);
 }
 
 struct solver* solve(FILE* file) {
@@ -1003,14 +1011,15 @@ struct solver* solve(FILE* file) {
 
 
 	parse(file, solver);
+
 	allocate_data(solver);
+	init_two_watched(solver);
+
 	preprocess(solver);
 	if (solver->solved) {
 		print_statistics(solver->statistics);
 		return solver;
 	}
-
-	init_two_watched(solver);
 
 	cdcl(solver);
 

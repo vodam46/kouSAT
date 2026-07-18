@@ -183,3 +183,12 @@ limit probing on large instances - bmc - takes too long
 
 rewrite code to be independent of the way literals are represented?
 	- would have to be gradual, itll be hard to find all the little quirks
+
+speed up occurence lists
+	- find which lines are most expensive
+		- probably cleaning database (O(~n^3) operation (every clause * every literal * every occurence))
+
+use the occurence lists everywhere i can
+	- removing toplevel satisfied clauses
+	- equivalent literal probing
+	- pure literals? - as part of inprocessing

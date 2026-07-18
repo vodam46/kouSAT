@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "solver.h"
 #include "watch.h"
 
 struct watches nil_watches = {NULL, 0};
@@ -46,6 +47,21 @@ void remove_watches_index(struct watches* watches, int index) {
 			remove_watches_unord(watches, i);
 			return;
 		}
+}
+
+void add_watched_clause(struct solver* solver, int index) {
+	struct clause clause = solver->problem.clauses[index];
+	for (int j = 0; j < 2; j++) {
+		value v = clause.values[j];
+		extend_watches(&solver->watched_clauses[v>0][abs(v)], create_watcher(clause, index, clause.values[1-j]));
+	}
+}
+void remove_watched_clause(struct solver* solver, int index) {
+	struct clause clause = solver->problem.clauses[index];
+	for (int j = 0; j < 2 && j < clause.length; j++) {
+		value v = clause.values[j];
+		remove_watches_index(&solver->watched_clauses[v>0][abs(v)], index);
+	}
 }
 
 void print_watches(struct watches watches) {

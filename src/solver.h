@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+struct solver;
+
 #include "clause.h"
 #include "int_arr.h"
 #include "watch.h"
@@ -43,6 +45,8 @@ struct solver {
 	// [0] is false, [1] is true
 	struct watches* watched_clauses[2];
 
+	struct int_arr* occurs[2];
+
 	// index into trail of literals that need to be checked
 	int queue;
 
@@ -59,6 +63,9 @@ struct solver* solve(FILE*);
 void destroy_solver(struct solver*);
 
 void assign(struct solver*, value, int);
+
+void learn_clause(struct solver*, struct clause);
+void forget_clause(struct solver*, int);
 
 void unsat(struct solver*);
 void sat(struct solver*);
