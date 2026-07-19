@@ -568,6 +568,81 @@ analyze_loop:;
 	return ret;
 }
 
+// TODO: to_replace always positive, var_i flips polarity
+void replace_variable(struct solver* solver, value to_replace, value var_i) {
+	for (int j = 0; j < 2; j++) {
+		struct clause c = nilclause;
+		extend_clause(&c, to_replace);
+		extend_clause(&c, var_i);
+		c.values[j] *= -1;
+		extend_clauses(&solver->preprocessing_stack, c);
+	}
+
+	for (int b = 0; b < 2; b++) {
+		while (solver->occurs[b][abs(to_replace)].length) {
+			int ci = solver->occurs[b][abs(to_replace)].arr[0];
+
+			// TODO: dont look for which literal it contains, trust the occurence lists
+			struct clause* c = &solver->problem.clauses[ci];
+			int index = -1;
+			int mult = 0;
+			int other = -1;
+			for (int i = 0; i < c->length; i++) {
+				value v = c->values[i];
+				if (abs(v) == abs(to_replace)) {
+					index = i;
+					mult = v == to_replace ? 1 : -1;
+				}
+				if (abs(v) == var_i) other = i;
+			}
+			if (index == -1) continue;
+			remove_int_arr_value(&solver->occurs[(to_replace*mult)>0][abs(to_replace)], ci);
+
+			if (other == -1) {
+				if (index < 2) remove_watched_clause(solver, ci);
+				c->values[index] = var_i*mult;
+				if (index < 2) add_watched_clause(solver, ci);
+				recalculate_mask(c);
+				extend_int_arr(&solver->occurs[mult==1][var_i], ci);
+				continue;
+			}
+
+			if (c->values[other] != var_i*mult) {
+				forget_clause(solver, ci--);
+				continue;
+			}
+
+			if (index < 2) remove_watched_clause(solver, ci);
+			remove_clause_unord(c, index);
+			recalculate_mask(c);
+
+			if (c->length != 1) {
+				// TODO: what to do if the replacement is assigned false?
+				if (index < 2) add_watched_clause(solver, ci);
+				continue;
+			}
+
+			// TODO: shouldnt be possible?
+			// wouldve already been seen during regular probing
+			printf("new unit %d\n", c->values[0]);
+			value unit = c->values[0];
+			if (solver->variables[abs(unit)] == vundef) {
+				assign(solver, unit, -1);
+				extend_int_arr(&solver->units, unit);
+				remove_clauses_unord(&solver->problem, ci--);
+				continue;
+			}
+
+			if (solver->variables[abs(unit)] == get_vbool(unit)) {
+				remove_clauses_unord(&solver->problem, ci--);
+			} else {
+				unsat(solver);
+				return;
+			}
+		}
+	}
+}
+
 void probe(struct solver* solver) {
 	// TODO: optimize same way as preprocessing?
 	// TODO: only literals that are in a 2 length clause
@@ -707,73 +782,11 @@ probe_restart:;
 			for (int eq_i = 0; eq_i < equivalent_lits.length; eq_i++) {
 				int to_replace = equivalent_lits.arr[eq_i];
 				if (solver->variables[abs(to_replace)] != vundef) continue;
+				replace_variable(solver, to_replace, var_i);
 				change = true;
 				solver->statistics.probed++;
 
-				for (int j = 0; j < 2; j++) {
-					struct clause c = nilclause;
-					extend_clause(&c, to_replace);
-					extend_clause(&c, var_i);
-					c.values[j] *= -1;
-					extend_clauses(&solver->preprocessing_stack, c);
-				}
-
-				// TODO: using occurence lists
-				for (int ci = 0; ci < solver->problem.length; ci++) {
-					struct clause* c = &solver->problem.clauses[ci];
-					int index = -1;
-					int mult = 0;
-					int other = -1;
-					for (int i = 0; i < c->length; i++) {
-						value v = c->values[i];
-						if (abs(v) == abs(to_replace)) {
-							index = i;
-							mult = v == to_replace ? 1 : -1;
-						}
-						if (abs(v) == var_i) other = i;
-					}
-					if (index == -1) continue;
-					if (other == -1) {
-						if (index < 2) remove_watched_clause(solver, ci);
-						c->values[index] = var_i*mult;
-						if (index < 2) add_watched_clause(solver, ci);
-						recalculate_mask(c);
-						continue;
-					}
-
-					if (c->values[other] != var_i*mult) {
-						forget_clause(solver, ci--);
-						continue;
-					}
-
-					if (index < 2) remove_watched_clause(solver, ci);
-					remove_clause_unord(c, index);
-					recalculate_mask(c);
-
-					if (c->length != 1) {
-						// TODO: what to do if the replacement is assigned false?
-						if (index < 2) add_watched_clause(solver, ci);
-						continue;
-					}
-
-					// TODO: shouldnt be possible?
-					// wouldve already been seen during regular probing
-					printf("new unit %d\n", c->values[0]);
-					value unit = c->values[0];
-					if (solver->variables[abs(unit)] == vundef) {
-						assign(solver, unit, -1);
-						extend_int_arr(&solver->units, unit);
-						remove_clauses_unord(&solver->problem, ci--);
-						continue;
-					}
-
-					if (solver->variables[abs(unit)] == get_vbool(unit)) {
-						remove_clauses_unord(&solver->problem, ci--);
-					} else {
-						unsat(solver);
-						return;
-					}
-				}
+				if (solver->solved) return;
 			}
 		}
 
@@ -852,8 +865,6 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 	return false;
 }
 
-// TODO: this code sucks, fix this - separate into functions
-// remove_watched_clause, unwatch (?), is_toplevel_satisfied, ...
 // TODO: keep cleaned clauses for probing?
 // TODO: once conflict is found, compare new conflict clause with cleaned clauses?
 // - could be extremely slow, and not work
