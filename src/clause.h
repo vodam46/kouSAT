@@ -14,7 +14,9 @@ enum vbool {
 
 struct clause {
 	uint64_t mask;
+
 	bool learned;
+	bool keep;
 	// TODO: glue, other attributes
 
 	value* values;

@@ -9,6 +9,7 @@ struct clause nilclause = {
 	.values=NULL,
 	.length=0,
 	.learned=false,
+	.keep=true,
 	.mask=(uint64_t)0
 };
 
@@ -164,6 +165,7 @@ void copy_clause(struct clause* dest, struct clause orig) {
 	dest->length = orig.length;
 	dest->mask = orig.mask;
 	dest->learned = orig.learned;
+	dest->keep = orig.keep;
 
 	dest->values = malloc(orig.length * sizeof(value));
 	memcpy(dest->values, orig.values, orig.length * sizeof(value));

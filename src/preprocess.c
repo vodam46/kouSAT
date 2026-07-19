@@ -8,7 +8,6 @@
 #include "watch.h"
 #include "clause.h"
 #include "preprocess.h"
-#include "occurs.h"
 
 bool unit_check(struct solver* solver, struct clause clause) {
 	if (clause.length > 1) return false;

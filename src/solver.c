@@ -366,21 +366,21 @@ void learn_clause(struct solver* solver, struct clause clause) {
 	}
 }
 
-void forget_clause(struct solver* solver, int index) {
+void clean_clause(struct solver* solver, int index) {
 	// delete watches
-	delete_occurence(solver, index);
-	remove_watched_clause(solver, index);
-
 	if (index != solver->problem.length-1) {
 		struct clause new = solver->problem.clauses[solver->problem.length-1];
-
-		delete_occurence(solver, solver->problem.length-1);
-		remove_watched_clause(solver, solver->problem.length-1);
+		if (new.keep) {
+			delete_occurence(solver, solver->problem.length-1);
+			remove_watched_clause(solver, solver->problem.length-1);
+		}
 
 		remove_clauses_unord(&solver->problem, index);
 
-		add_occurence(solver, index);
-		add_watched_clause(solver, index);
+		if (new.keep) {
+			add_occurence(solver, index);
+			add_watched_clause(solver, index);
+		}
 
 		if (new.length > 0 && solver->reason[abs(new.values[0])] == solver->problem.length)
 			solver->reason[abs(new.values[0])] = index;
@@ -391,6 +391,15 @@ void forget_clause(struct solver* solver, int index) {
 		remove_clauses_unord(&solver->problem, index);
 	}
 }
+
+void forget_clause(struct solver* solver, int index) {
+	// delete watches
+	delete_occurence(solver, index);
+	remove_watched_clause(solver, index);
+
+	clean_clause(solver, index);
+}
+
 
 void init_two_watched(struct solver* solver) {
 	for (int i = 0; i < solver->problem.length; i++) {
@@ -854,6 +863,7 @@ void clean_database(struct solver* solver) {
 
 	for (int i = solver->problem.length-1; i >= 0; i--) {
 		struct clause* c = &solver->problem.clauses[i];
+		c->keep = true;
 
 		// TODO: only check if there were any new units?
 		bool toplevel_satisfied = false;
@@ -908,9 +918,38 @@ void clean_database(struct solver* solver) {
 
 		solver->statistics.cleaned++;
 
-		forget_clause(solver, i);
-
+		c->keep = false;
 	}
+
+	for (int var_i = 1; var_i < solver->len_variables+1; var_i++) {
+		for (int b = 0; b < 2; b++) {
+			struct int_arr* occ = &solver->occurs[b][var_i];
+			int l = 0, r = 0;
+			for (; r < occ->length; r++) {
+				int o = occ->arr[r];
+				if (solver->problem.clauses[o].keep)
+					occ->arr[l++] = occ->arr[r];
+			}
+			reduce_int_arr(occ, r-l);
+
+			struct watches* watch = &solver->watched_clauses[b][var_i];
+			l = 0, r = 0;
+			for (; r < watch->length; r++) {
+				int w = watch->arr[r].index;
+				if (solver->problem.clauses[w].keep)
+					watch->arr[l++] = watch->arr[r];
+			}
+			reduce_watches(watch, r-l);
+		}
+	}
+
+	for (int i = solver->problem.length-1; i >= 0; i--) {
+		if (!solver->problem.clauses[i].keep) {
+			clean_clause(solver, i);
+		}
+	}
+
+
 	printf("%d)", solver->problem.length);
 }
 
@@ -924,7 +963,7 @@ void cdcl(struct solver* solver) {
 		while ((conflict = unit_propagate(solver)) != -1)
 			if (resolve_conflict(solver, conflict)) return;
 
-		// TODO: less probing, slows down solver too much
+		// TODO: do more probing?
 		if (solver->should_probe && solver->decisions.length == 0) {
 			solver->should_probe = false;
 			probe(solver);
@@ -973,6 +1012,8 @@ void allocate_data(struct solver* solver) {
 	solver->trail.arr = malloc((solver->len_variables-solver->statistics.variables_eliminated) * sizeof(value));
 
 	build_occurence_list(solver);
+
+	for (int i = 0; i < solver->problem.length; i++) solver->problem.clauses[i].keep = true;
 }
 
 struct solver* solve(FILE* file) {
