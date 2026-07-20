@@ -368,19 +368,15 @@ void learn_clause(struct solver* solver, struct clause clause) {
 
 void clean_clause(struct solver* solver, int index) {
 	// delete watches
-	if (index != solver->problem.length-1) {
+	if (index != solver->problem.length-1 && solver->problem.clauses[solver->problem.length-1].keep) {
 		struct clause new = solver->problem.clauses[solver->problem.length-1];
-		if (new.keep) {
-			delete_occurence(solver, solver->problem.length-1);
-			remove_watched_clause(solver, solver->problem.length-1);
-		}
+		delete_occurence(solver, solver->problem.length-1);
+		remove_watched_clause(solver, solver->problem.length-1);
 
 		remove_clauses_unord(&solver->problem, index);
 
-		if (new.keep) {
-			add_occurence(solver, index);
-			add_watched_clause(solver, index);
-		}
+		add_occurence(solver, index);
+		add_watched_clause(solver, index);
 
 		if (new.length > 0 && solver->reason[abs(new.values[0])] == solver->problem.length)
 			solver->reason[abs(new.values[0])] = index;
@@ -568,7 +564,6 @@ analyze_loop:;
 	return ret;
 }
 
-// TODO: to_replace always positive, var_i flips polarity
 void replace_variable(struct solver* solver, value to_replace, value var_i) {
 	for (int j = 0; j < 2; j++) {
 		struct clause c = nilclause;
@@ -579,36 +574,32 @@ void replace_variable(struct solver* solver, value to_replace, value var_i) {
 	}
 
 	for (int b = 0; b < 2; b++) {
-		while (solver->occurs[b][abs(to_replace)].length) {
-			int ci = solver->occurs[b][abs(to_replace)].arr[0];
+		int mult = b ? 1 : -1;
+		int var_p = (var_i*mult)>0;
+		for (int j = solver->occurs[b][to_replace].length-1; j >= 0; j--) {
+			int ci = solver->occurs[b][to_replace].arr[j];
+			remove_int_arr_value(&solver->occurs[b][to_replace], ci);
 
-			// TODO: dont look for which literal it contains, trust the occurence lists
 			struct clause* c = &solver->problem.clauses[ci];
 			int index = -1;
-			int mult = 0;
-			int other = -1;
+			int other =  0;
 			for (int i = 0; i < c->length; i++) {
 				value v = c->values[i];
-				if (abs(v) == abs(to_replace)) {
-					index = i;
-					mult = v == to_replace ? 1 : -1;
-				}
-				if (abs(v) == var_i) other = i;
+				if (abs(v) == to_replace) index = i;
+				if (abs(v) == abs(var_i)) other = v;
 			}
-			if (index == -1) continue;
-			remove_int_arr_value(&solver->occurs[(to_replace*mult)>0][abs(to_replace)], ci);
 
-			if (other == -1) {
+			if (other == 0) {
 				if (index < 2) remove_watched_clause(solver, ci);
 				c->values[index] = var_i*mult;
 				if (index < 2) add_watched_clause(solver, ci);
 				recalculate_mask(c);
-				extend_int_arr(&solver->occurs[mult==1][var_i], ci);
+				extend_int_arr(&solver->occurs[var_p][abs(var_i)], ci);
 				continue;
 			}
 
-			if (c->values[other] != var_i*mult) {
-				forget_clause(solver, ci--);
+			if (other != var_i*mult) {
+				forget_clause(solver, ci);
 				continue;
 			}
 
@@ -624,17 +615,17 @@ void replace_variable(struct solver* solver, value to_replace, value var_i) {
 
 			// TODO: shouldnt be possible?
 			// wouldve already been seen during regular probing
-			printf("new unit %d\n", c->values[0]);
+			printf("c new unit %d\n", c->values[0]);
 			value unit = c->values[0];
 			if (solver->variables[abs(unit)] == vundef) {
 				assign(solver, unit, -1);
 				extend_int_arr(&solver->units, unit);
-				remove_clauses_unord(&solver->problem, ci--);
+				forget_clause(solver, ci);
 				continue;
 			}
 
 			if (solver->variables[abs(unit)] == get_vbool(unit)) {
-				remove_clauses_unord(&solver->problem, ci--);
+				forget_clause(solver, ci);
 			} else {
 				unsat(solver);
 				return;
@@ -782,7 +773,7 @@ probe_restart:;
 			for (int eq_i = 0; eq_i < equivalent_lits.length; eq_i++) {
 				int to_replace = equivalent_lits.arr[eq_i];
 				if (solver->variables[abs(to_replace)] != vundef) continue;
-				replace_variable(solver, to_replace, var_i);
+				replace_variable(solver, abs(to_replace), to_replace>0 ? var_i : -var_i);
 				change = true;
 				solver->statistics.probed++;
 
