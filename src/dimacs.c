@@ -31,8 +31,9 @@ void parse(FILE* file, struct solver* solver) {
 		fscanf(file, "%d", &value);
 		if (value == 0) {
 			if (!ignore) {
+				clause.glue = clause.length;
 				if (clause.length == 1) {
-				extend_int_arr(&solver->units, clause.values[0]);
+					extend_int_arr(&solver->units, clause.values[0]);
 					free(clause.values);
 				} else extend_clauses(&solver->problem, clause);
 			}

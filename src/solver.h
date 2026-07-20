@@ -32,6 +32,8 @@ struct solver {
 	int* reason;
 	int* level;
 
+	bool* levels;
+
 	// for minimizing
 	bool* ignore;
 	bool* remove;

@@ -140,6 +140,8 @@ void destroy_solver(struct solver* solver) {
 	free(solver->seen[0]);
 	free(solver->seen[1]);
 
+	free(solver->levels);
+
 	free_occurs(solver);
 
 	free(solver);
@@ -265,6 +267,21 @@ int unit_propagate(struct solver* solver) {
 					} else {
 						solver->statistics.propagations++;
 						assign(solver, first, w.index);
+
+						int old_glue = clause.glue;
+						int glue = 0;
+						bool* levels = solver->levels;
+						memset(levels, false, (solver->decisions.length+1)*sizeof(bool));
+						for (int i = 0; i < clause.length && glue < old_glue; i++) {
+							value v = clause.values[i];
+							int level = solver->level[abs(v)];
+							if (levels[level]) continue;
+							levels[level] = true;
+							glue++;
+						}
+						if (glue < old_glue)
+							solver->problem.clauses[watcher.index].glue = glue;
+
 					}
 					break;
 
@@ -368,8 +385,8 @@ void learn_clause(struct solver* solver, struct clause clause) {
 
 void clean_clause(struct solver* solver, int index) {
 	// delete watches
-	if (index != solver->problem.length-1 && solver->problem.clauses[solver->problem.length-1].keep) {
-		struct clause new = solver->problem.clauses[solver->problem.length-1];
+	struct clause new = solver->problem.clauses[solver->problem.length-1];
+	if (index != solver->problem.length-1) {
 		delete_occurence(solver, solver->problem.length-1);
 		remove_watched_clause(solver, solver->problem.length-1);
 
@@ -382,7 +399,6 @@ void clean_clause(struct solver* solver, int index) {
 			solver->reason[abs(new.values[0])] = index;
 		if (new.length > 1 && solver->reason[abs(new.values[1])] == solver->problem.length)
 			solver->reason[abs(new.values[1])] = index;
-
 	} else {
 		remove_clauses_unord(&solver->problem, index);
 	}
@@ -559,6 +575,18 @@ analyze_loop:;
 			ret.values[1] = l;
 		}
 	}
+
+	int glue = 0;
+	bool* levels = solver->levels;
+	memset(levels, false, (solver->decisions.length+1)*sizeof(bool));
+	for (int i = 0; i < ret.length; i++) {
+		value v = ret.values[i];
+		int level = solver->level[abs(v)];
+		if (levels[level]) continue;
+		levels[level] = true;
+		glue++;
+	}
+	ret.glue = glue;
 
 	solver->statistics.length_sum += ret.length;
 	return ret;
@@ -910,7 +938,7 @@ void clean_database(struct solver* solver) {
 				continue;
 			} else {
 				// keep binary clauses
-				if (c->length <= 2) continue;
+				if (c->length <= 2 || c->glue <= 2) continue;
 
 				// if clause is reason for [0] -> continue
 				if (solver->reason[abs(c->values[0])] == i) continue;
@@ -1012,6 +1040,8 @@ void allocate_data(struct solver* solver) {
 		solver->seen[i] = malloc((solver->len_variables+1) * sizeof(bool));
 
 	solver->trail.arr = malloc((solver->len_variables-solver->statistics.variables_eliminated) * sizeof(value));
+
+	solver->levels = malloc((solver->len_variables+1)*sizeof(bool));
 
 	build_occurence_list(solver);
 

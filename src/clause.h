@@ -17,7 +17,8 @@ struct clause {
 
 	bool learned;
 	bool keep;
-	// TODO: glue, other attributes
+	int glue;
+	// TODO: other attributes?
 
 	value* values;
 	int length;
