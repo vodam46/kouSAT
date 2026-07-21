@@ -493,5 +493,7 @@ preprocess_end:;
 	free(marked[0]);
 	free(marked[1]);
 
+	solver->allowed = solver->problem.length*2;
+
 	printf("c after  %d\n", solver->problem.length);
 }

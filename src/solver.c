@@ -893,7 +893,7 @@ void clean_database(struct solver* solver) {
 
 	for (int i = solver->problem.length-1; i >= 0; i--) {
 		struct clause* c = &solver->problem.clauses[i];
-		c->keep = true;
+		if (!c->keep) continue;
 
 		// TODO: only check if there were any new units?
 		bool toplevel_satisfied = false;
@@ -934,16 +934,37 @@ void clean_database(struct solver* solver) {
 				}
 			}
 
-			if (!c->learned) {
-				continue;
-			} else {
+			if (c->learned) {
 				// keep binary clauses
 				if (c->length <= 2 || c->glue <= 2) continue;
 
 				// if clause is reason for [0] -> continue
 				if (solver->reason[abs(c->values[0])] == i) continue;
 				if (solver->reason[abs(c->values[1])] == i) continue;
+
+				struct int_arr* occ = NULL;
+				int count = INT_MAX;
+				for (int j = 0; j < c->length; j++) {
+					value v = c->values[j];
+					struct int_arr* other = &solver->occurs[v>0][abs(v)];
+					if (other->length < count) {
+						occ = other;
+						count = other->length;
+					}
+				}
+
+				for (int j = occ->length-1; j >= 0; j--) {
+					int index = occ->arr[j];
+					if (index == i) continue;
+					struct clause* other = &solver->problem.clauses[index];
+					if (other->keep && subsumes(*c, *other)) {
+						if (!other->learned)
+							c->learned = false;
+						other->keep = false;
+					}
+				}
 			}
+			if (!c->learned) continue;
 		}
 
 		solver->statistics.cleaned++;
