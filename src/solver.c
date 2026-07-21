@@ -281,7 +281,7 @@ int unit_propagate(struct solver* solver) {
 						}
 						if (glue < old_glue)
 							solver->problem.clauses[watcher.index].glue = glue;
-
+						solver->problem.clauses[watcher.index].useful = true;
 					}
 					break;
 
@@ -549,7 +549,9 @@ struct clause analyze(struct solver* solver, int conflict) {
 analyze_loop:;
 		value literal = solver->trail.arr[index--];
 		if (clause_contains(ret, -literal)) {
-			resolve(&ret, solver->problem.clauses[solver->reason[abs(literal)]], literal);
+			struct clause* reason = &solver->problem.clauses[solver->reason[abs(literal)]];
+			reason->useful = true;
+			resolve(&ret, *reason, literal);
 			count--;
 		}
 		if (count > 1) goto analyze_loop;
@@ -666,8 +668,6 @@ void probe(struct solver* solver) {
 	// TODO: optimize same way as preprocessing?
 	// TODO: only literals that are in a 2 length clause
 	// TODO: clean this up
-	// TODO: dont allocate all the time
-	// TODO: equivalent literals
 	printf("(P %d ", solver->statistics.probed);
 	fflush(stdout);
 
@@ -920,6 +920,7 @@ void clean_database(struct solver* solver) {
 			if (r != l) {
 				solver->statistics.clauses_reduced += (r-l);
 
+				// TODO: dont do this here, but in unit_propagate?
 				if (c->length == 2) {
 					for (int j = 0; j < 2; j++) {
 						value v = c->values[j];
@@ -934,40 +935,47 @@ void clean_database(struct solver* solver) {
 				}
 			}
 
+			struct int_arr* occ = NULL;
+			int count = INT_MAX;
+			for (int j = 0; j < c->length; j++) {
+				value v = c->values[j];
+				struct int_arr* other = &solver->occurs[v>0][abs(v)];
+				if (other->length < count) {
+					occ = other;
+					count = other->length;
+				}
+			}
+			for (int j = occ->length-1; j >= 0; j--) {
+				int index = occ->arr[j];
+				if (index == i) continue;
+				struct clause* other = &solver->problem.clauses[index];
+				if (solver->reason[abs(other->values[0])] == index
+						|| solver->reason[abs(other->values[1])] == index)
+					continue;
+				if (other->keep && subsumes(*c, *other)) {
+					if (!other->learned)
+						c->learned = false;
+					other->keep = false;
+				}
+			}
+
 			if (c->learned) {
 				// keep binary clauses
-				if (c->length <= 2 || c->glue <= 2) continue;
+				if (
+						c->length <= 2
+						|| c->glue <= 2
+						|| (c->glue <= 5 && c->useful)
+				   ) {
+					c->glue++;
+					c->useful = false;
+					continue;
+				}
 
-				// if clause is reason for [0] -> continue
+
+				// if clause is reason -> continue
 				if (solver->reason[abs(c->values[0])] == i) continue;
 				if (solver->reason[abs(c->values[1])] == i) continue;
 
-				struct int_arr* occ = NULL;
-				int count = INT_MAX;
-				for (int j = 0; j < c->length; j++) {
-					value v = c->values[j];
-					struct int_arr* other = &solver->occurs[v>0][abs(v)];
-					if (other->length < count) {
-						occ = other;
-						count = other->length;
-					}
-				}
-
-				for (int j = occ->length-1; j >= 0; j--) {
-					int index = occ->arr[j];
-					if (index == i) continue;
-					struct clause* other = &solver->problem.clauses[index];
-					if (solver->reason[abs(other->values[0])] == index
-							|| solver->reason[abs(other->values[1])] == index)
-						continue;
-
-					if (other->keep && subsumes(*c, *other)) {
-
-						if (!other->learned)
-							c->learned = false;
-						other->keep = false;
-					}
-				}
 			}
 			if (!c->learned) continue;
 		}

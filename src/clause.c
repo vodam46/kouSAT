@@ -10,6 +10,7 @@ struct clause nilclause = {
 	.length=0,
 	.learned=false,
 	.keep=true,
+	.useful=true,
 	.glue=-1,
 	.mask=(uint64_t)0
 };

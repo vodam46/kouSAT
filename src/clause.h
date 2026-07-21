@@ -17,6 +17,8 @@ struct clause {
 
 	bool learned;
 	bool keep;
+	bool useful;
+
 	int glue;
 	// TODO: other attributes?
 

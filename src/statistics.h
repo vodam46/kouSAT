@@ -1,9 +1,7 @@
 #pragma once
 
 // TODO: same way as kissat?
-// TODO: different way of printing?
 // TODO: more statistics
-// TODO: calculated statistics
 
 #define GET_CHAR(x) (_Generic((x), \
 	int: "%d", \

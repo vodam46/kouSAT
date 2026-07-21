@@ -192,3 +192,7 @@ use the occurence lists everywhere i can
 	- removing toplevel satisfied clauses
 	- equivalent literal probing
 	- pure literals? - as part of inprocessing
+
+incremental solving?
+	- assumptions
+	- lear_clause
