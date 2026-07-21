@@ -521,11 +521,24 @@ void test_files(char* files[], bool result) {
 		assert(s->solved);
 		assert(s->result == result);
 
+
 #define INCREMENT_AND_PRINT(name, type) \
 		total_##name += s->statistics.name; \
 		printf("c total_" #name " %d\n", total_##name);
 		STATISTICS(INCREMENT_AND_PRINT)
 #undef INCREMENT_AND_PRINT
+
+		printf("\n");
+
+#define GET_STAT(name) total_##name
+#define PRINT_CALCULATED(name, type, calc) \
+	printf("c total_" #name ": "); \
+	printf(GET_CHAR((type)0), calc); \
+	printf("\n");
+
+	CALCULATED(PRINT_CALCULATED, GET_STAT)
+#undef PRINT_CALCULATED
+#undef GET_STAT
 
 
 		destroy_solver(s);
