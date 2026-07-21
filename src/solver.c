@@ -957,7 +957,12 @@ void clean_database(struct solver* solver) {
 					int index = occ->arr[j];
 					if (index == i) continue;
 					struct clause* other = &solver->problem.clauses[index];
+					if (solver->reason[abs(other->values[0])] == index
+							|| solver->reason[abs(other->values[1])] == index)
+						continue;
+
 					if (other->keep && subsumes(*c, *other)) {
+
 						if (!other->learned)
 							c->learned = false;
 						other->keep = false;
@@ -1008,7 +1013,6 @@ void cdcl(struct solver* solver) {
 	printf("c searching\nc ");
 	init_vsids(solver);
 
-	// TODO: rewrite these as solver attributes
 	while (!solver->solved) {
 		int conflict;
 		while ((conflict = unit_propagate(solver)) != -1)
