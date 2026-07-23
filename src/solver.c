@@ -581,6 +581,8 @@ analyze_loop:;
 		glue++;
 	}
 	ret.glue = glue;
+	ret.useful = false;
+	ret.keep = true;
 
 	solver->statistics.length_sum += ret.length;
 	return ret;
@@ -1074,7 +1076,12 @@ void allocate_data(struct solver* solver) {
 
 	build_occurence_list(solver);
 
-	for (int i = 0; i < solver->problem.length; i++) solver->problem.clauses[i].keep = true;
+	for (int i = 0; i < solver->problem.length; i++) {
+		struct clause* c = &solver->problem.clauses[i];
+		c->useful = false;
+		c->keep = true;
+		c->glue = c->length;
+	}
 }
 
 struct solver* solve(FILE* file) {
