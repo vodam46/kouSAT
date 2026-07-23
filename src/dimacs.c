@@ -6,6 +6,7 @@
 
 // TODO: make this different?
 // TODO: put some basic unit propagation in parsing
+// TODO: zip archive parsing?
 void parse(FILE* file, struct solver* solver) {
 	printf("c parsing\n");
 	char* line = NULL;

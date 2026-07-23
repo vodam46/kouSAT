@@ -32,7 +32,6 @@ void preprocess_unit_propagate(
 		bool** arr,
 		bool* touched
 		) {
-	// printf("preprocess unit propagation\n");
 	for (; solver->queue < solver->units.length; solver->queue++) {
 		value v = solver->units.arr[solver->queue];
 		if (solver->occurs[0][abs(v)].length == 0 && solver->occurs[1][abs(v)].length == 0) continue;
@@ -84,19 +83,16 @@ void preprocess_unit_propagate(
 }
 
 bool preprocess_pure_literals(struct solver* solver) {
-	// printf("preprocess pure literals\n");
 	bool change = false;
 
 	for (int i = 1; i < solver->len_variables+1; i++) {
 		if (solver->variables[i] != vundef) continue;
 		if (solver->occurs[0][i].length == 0 && solver->occurs[1][i].length >= 1) {
-			// printf("pure %d\n", i);
 			assign(solver, i, -1);
 			extend_int_arr(&solver->units, i);
 			change = true;
 		}
 		if (solver->occurs[0][i].length >= 1 && solver->occurs[1][i].length == 0) {
-			// printf("pure %d\n", -i);
 			assign(solver, -i, -1);
 			extend_int_arr(&solver->units, -i);
 			change = true;
@@ -113,7 +109,6 @@ void preprocess_subsume_clauses(
 		bool* strengthened,
 		bool* touched
 		) {
-	// printf("preprocess subsume clauses\n");
 	struct clause clause = solver->problem.clauses[ci];
 	value lit = 0;
 	int count = INT_MAX;
@@ -249,7 +244,6 @@ void preprocess_self_subsume(
 		bool* strengthened,
 		bool* touched
 		) {
-	// printf("preprocess self subsume\n");
 	struct clause clause = solver->problem.clauses[ci];
 
 	value lit = 0;
@@ -450,7 +444,6 @@ void preprocess(struct solver* solver) {
 		}
 
 		do {
-			// printf("eliminate\n");
 			memcpy(s, touched, solver->len_variables*sizeof(bool));
 			memset(touched, false, solver->len_variables*sizeof(bool));
 
@@ -492,8 +485,6 @@ preprocess_end:;
 	free(s1);
 	free(marked[0]);
 	free(marked[1]);
-
-	solver->allowed = solver->problem.length*2;
 
 	printf("c after  %d\n", solver->problem.length);
 }

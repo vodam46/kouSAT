@@ -44,7 +44,6 @@ struct solver {
 
 	// for each literal, a list of clauses
 	// the watched literals are always in [0] and [1] in the clause
-	// [0] is false, [1] is true
 	struct watches* watched_clauses[2];
 
 	struct int_arr* occurs[2];

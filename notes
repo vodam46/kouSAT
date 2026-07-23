@@ -71,6 +71,7 @@ clause minimization
 if (pre|in)processing -> model generation of original formula
 proof gen for unsat (DRUP/DRAT) - https://www.msoos.org/2022/04/proof-traces-for-sat-solvers/
 assumptions / incremental solving (minisat)
+	- predefined order of decisions, if any are wrong -> incremental unsat
 unsat core generation
 failed assumption literals
 clause vivification
@@ -111,17 +112,12 @@ find some other blog about sat solving to take ideas from
 
 move *all* allocation to allocate_data
 
-clause vivification
-
 reduce the number of memory alloc's
 	- reallocs in clause creation -> not +1, but *1.5?
 
 proper debug information
 
 built in checker for testing
-
-start optimizing - preprocessing takes up suspiciously long
-	- nqueens cnf - self subsumtion
 
 NULL checks on memory allocations
 
@@ -134,13 +130,12 @@ multiple conflict clauses?
 
 no more malloc((solver->len_variables+1)*sizeof(...)) - allocate only as much as is needed
 
-https://matryoshka-project.github.io
-
 inprocessing
-	- keep occurence lists?
 	- conflict clause subsumtion -> remove all subsumed
+		- ! check if it works properly
 
 https://www.msoos.org/2010/05/on-failed-literal-probing/
+	- 1-recursive learning
 
 fix printing - in the style of kissat? (but more clear which is which)
 	- every 0.1s print stats?
@@ -149,25 +144,15 @@ fix printing - in the style of kissat? (but more clear which is which)
 		probing (attempts, average probed (excluding the end of unsat instances?))
 		...
 
-memcheck - there might be a memory leak again - preprocessing, occurence lists
-
 read through microsat - https://github.com/marijnheule/microsat
-
-clause deletion - use glues?
-	- heuristic for deletion
-	- 3 categories for glue deletion - test different numbers/heuristics
-		- never delete - 2 glue?
-		- keep if useful - 3-6 glue
-		- always delete - 7+
+	- and some other good solvers
 
 some inprocessing with learned clauses
 	- subsumtion - dont delete if subsumes original clause
-	- self subsuming resolution (shouldnt minimization stop this?)
+	- self subsuming resolution
 	- variable elimination?
 
 watchlists - native ternary clauses? - some other clause type?
-
-work on combining preprocessing, probing, and search
 
 split long functions into shorter helper functions
 	- unit_propagate, preprocess, minimize, probe, maybe_eliminate, clean_database
@@ -179,20 +164,25 @@ read through kitten (then kissat?) source code - some algorithmic improvements?
 
 clean up the api
 
-limit probing on large instances - bmc - takes too long
-
 rewrite code to be independent of the way literals are represented?
 	- would have to be gradual, itll be hard to find all the little quirks
 
-speed up occurence lists
-	- find which lines are most expensive
-		- probably cleaning database (O(~n^3) operation (every clause * every literal * every occurence))
-
 use the occurence lists everywhere i can
 	- removing toplevel satisfied clauses
-	- equivalent literal probing
 	- pure literals? - as part of inprocessing
 
 incremental solving?
 	- assumptions
-	- lear_clause
+	- learn_clause
+
+compressed cnf file parsing?
+
+find more large/difficult test files
+	- from sat-comp, but have to either decompress all the files or implement parsing archives
+
+actual pre/inprocessing scheduling - every x conflicts, more often depending on how many units are found
+unsuccesful probing/processing -> delay next attempt
+
+renumbering variables?
+
+run through valgrind - there's a memory bug

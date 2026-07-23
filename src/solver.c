@@ -1,7 +1,5 @@
 // TODO: check that everything is correct
 // TODO: vsids queue
-// TODO: harden parsing - fault tolerant
-// TODO: clean up the code
 
 #include <limits.h>
 #include <stdio.h>
@@ -292,7 +290,6 @@ int unit_propagate(struct solver* solver) {
 						right++;
 						solver->statistics.propagations++;
 						assign(solver, watcher.blocker, watcher.index);
-						// TODO: swap the literals in clause so the blocker is in [0]?
 
 					// is true, can continue
 					} else if (var == block) {
@@ -336,7 +333,6 @@ void update_vsids(struct solver* solver, struct clause new) {
 }
 
 value guess(struct solver* solver) {
-	// TODO: is this the proper place to put it?
 	solver->statistics.decisions++;
 	double score = -1;
 	value var = 0;
@@ -384,7 +380,6 @@ void learn_clause(struct solver* solver, struct clause clause) {
 }
 
 void clean_clause(struct solver* solver, int index) {
-	// delete watches
 	struct clause new = solver->problem.clauses[solver->problem.length-1];
 	if (index != solver->problem.length-1) {
 		delete_occurence(solver, solver->problem.length-1);
@@ -405,7 +400,6 @@ void clean_clause(struct solver* solver, int index) {
 }
 
 void forget_clause(struct solver* solver, int index) {
-	// delete watches
 	delete_occurence(solver, index);
 	remove_watched_clause(solver, index);
 
@@ -557,8 +551,6 @@ analyze_loop:;
 		if (count > 1) goto analyze_loop;
 	}
 
-	// TODO: do this during resolution?
-	// TODO: sort the literals according to their level?
 	for (int i = 1; i < ret.length; i++) {
 		value l = ret.values[i];
 		if (solver->level[abs(l)] == solver->decisions.length) {
@@ -818,8 +810,6 @@ probe_restart:;
 		free(equivalent_lits.arr);
 	}
 
-	// looping actually makes it slower - look into why
-	// rewrite to use an int_arr?
 	if (change) goto probe_restart;
 	printf("%d)", solver->statistics.probed);
 	fflush(stdout);
@@ -834,6 +824,8 @@ int luby(int i) {
 			return luby (i - (1 << (k-1)) + 1);
 }
 
+// TODO: geometric restarts?
+// or a dynamic restart scheme
 void restart(struct solver* solver) {
 	printf("r");
 	fflush(stdout);
@@ -956,11 +948,12 @@ void clean_database(struct solver* solver) {
 					if (!other->learned)
 						c->learned = false;
 					other->keep = false;
+					c->keep = true;
 				}
 			}
 
 			if (c->learned) {
-				// keep binary clauses
+				// keep "good" clauses
 				if (
 						c->length <= 2
 						|| c->glue <= 2
@@ -979,8 +972,6 @@ void clean_database(struct solver* solver) {
 			}
 			if (!c->learned) continue;
 		}
-
-		solver->statistics.cleaned++;
 
 		c->keep = false;
 	}
@@ -1009,6 +1000,7 @@ void clean_database(struct solver* solver) {
 
 	for (int i = solver->problem.length-1; i >= 0; i--) {
 		if (!solver->problem.clauses[i].keep) {
+			solver->statistics.cleaned++;
 			clean_clause(solver, i);
 		}
 	}
@@ -1017,9 +1009,12 @@ void clean_database(struct solver* solver) {
 	printf("%d)", solver->problem.length);
 }
 
+// TODO: more frequent clause cleaning?
 void cdcl(struct solver* solver) {
 	printf("c searching\nc ");
 	init_vsids(solver);
+
+	solver->allowed = solver->problem.length*2;
 
 	while (!solver->solved) {
 		int conflict;
@@ -1027,6 +1022,7 @@ void cdcl(struct solver* solver) {
 			if (resolve_conflict(solver, conflict)) return;
 
 		// TODO: do more probing?
+		// TODO: pure literals?
 		if (solver->should_probe && solver->decisions.length == 0) {
 			solver->should_probe = false;
 			probe(solver);

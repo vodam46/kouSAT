@@ -37,7 +37,6 @@ void print_clause(struct clause clause) {
 
 void print_clauses(struct clauses clauses) {
 	for (int i = 0; i < clauses.length; i++) {
-		// if (clauses.clauses[i].length > 1) continue;
 		printf("[%d] ", i);
 		print_clause(clauses.clauses[i]);
 	}
