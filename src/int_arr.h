@@ -3,6 +3,7 @@
 struct int_arr {
 	int* arr;
 	int length;
+	int allocated;
 };
 
 extern struct int_arr nil_int_arr;

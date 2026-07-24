@@ -1043,7 +1043,6 @@ void cdcl(struct solver* solver) {
 		if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) sat(solver);
 		else assign_guess(solver, guess(solver));
 	}
-	return;
 }
 
 void allocate_data(struct solver* solver) {
@@ -1092,12 +1091,11 @@ struct solver* solve(FILE* file) {
 
 	struct solver* solver = malloc(sizeof(struct solver));
 
-	struct int_arr nilarr     = {NULL, 0};
 	struct clauses nilclauses = {NULL, 0};
 
 	solver->solved				= false;
 	solver->problem				= nilclauses;
-	solver->units				= nilarr;
+	solver->units				= nil_int_arr;
 	solver->variables			= NULL;
 	solver->len_variables		= 0;
 	solver->reason				= NULL;
@@ -1105,8 +1103,8 @@ struct solver* solve(FILE* file) {
 	solver->watched_clauses[0]	= NULL;
 	solver->watched_clauses[1] 	= NULL;
 	solver->queue				= 0;
-	solver->trail				= nilarr;
-	solver->decisions			= nilarr;
+	solver->trail				= nil_int_arr;
+	solver->decisions			= nil_int_arr;
 	solver->vsids				= NULL;
 	solver->phase				= NULL;
 	solver->allowed				= 0;

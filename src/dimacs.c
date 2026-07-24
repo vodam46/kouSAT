@@ -24,6 +24,7 @@ void parse(FILE* file, struct solver* solver) {
 	sscanf(line, "p cnf %d %d", &solver->len_variables, &solver->allowed);
 	free(line);
 
+	// TODO: comments in the clauses
 	int loaded = 0;
 	bool ignore = false;
 	struct clause clause = nilclause;
