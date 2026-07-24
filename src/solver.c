@@ -864,14 +864,9 @@ bool resolve_conflict(struct solver* solver, int conflict) {
 		update_vsids(solver, new);
 		extend_clauses(&solver->problem, new);
 		add_occurence(solver, solver->problem.length-1);
+		solver->conflicts_until_restart--;
 	}
-
-	// TODO: clean this up?
-	if (--solver->conflicts_until_restart == 0) {
-		restart(solver);
-		if (new.length == 1) assign(solver, new.values[0], -1);
-		else add_watched_clause(solver, solver->problem.length-1);
-	} else backtrack_learnt(solver, new);
+	backtrack_learnt(solver, new);
 
 	if (new.length == 1) free(new.values);
 
@@ -1030,6 +1025,15 @@ void cdcl(struct solver* solver) {
 			probe(solver);
 			if (solver->solved) return;
 		}
+
+		if (solver->trail.length == solver->len_variables - solver->statistics.variables_eliminated) {
+			sat(solver);
+			return;
+		}
+
+		if (solver->conflicts_until_restart <= 0) {
+			restart(solver);
+		};
 
 		if (solver->problem.length > solver->allowed) {
 			solver->allowed = solver->problem.length*2;
